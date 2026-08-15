@@ -1,0 +1,29 @@
+# Gradle
+.gradle/
+/build/
+*/build/
+
+# Local properties and IDE
+local.properties
+.idea/
+*.iml
+.externalNativeBuild/
+.cxx/
+
+# Build and test logs
+build-*.log
+test-*.log
+
+# Generated reports
+app/build/reports/
+app/build/intermediates/
+app/build/generated/
+app/build/kotlin/
+
+# Signing files
+*.jks
+*.keystore
+
+# OS files
+.DS_Store
+Thumbs.db
