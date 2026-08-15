@@ -55,3 +55,16 @@ Hashes dos APKs instrumentados:
 
 - `tedflix-diagnostic-debug.apk`: `ccac825ff406d3130a9b466470d759d5c196891ba9b1813b036de2b11519a4d6`
 - `tedflix-diagnostic-release-unsigned.apk`: `b1aa66cc16c87feb12082d9f52d3a670b844cbddf6ec6d853eff556abe97d3d4`
+
+## Correção da primeira abertura
+
+O stack trace fornecido pelo aparelho apontou para `PlayerActivity.showStartupError(PlayerActivity.kt:549)`, chamado por `onCreate(PlayerActivity.kt:102)`. Essa linha não era a causa original: `showStartupError()` fabricava uma nova `IllegalStateException("A interface do player não pôde ser criada")` e descartava a exceção que havia acontecido dentro de `buildUi()`. Por isso o diagnóstico aparecia como `Activity: StringBuilder` e não mostrava a instrução que falhou.
+
+A correção agora passa o `Throwable` original para `showDiagnosticScreen`, registra subetapas de `buildUi()` no Logcat com a tag `TedflixPlayer` e mostra a última subetapa real na tela. Também removi a atribuição repetida de `requestedOrientation` do `onCreate`: a orientação landscape já está declarada no Manifesto, e repetir a troca durante a criação da UI podia provocar uma recriação/estado intermediário na primeira abertura. O player HLS Media3, `HlsMediaSource`, headers e preflight não foram substituídos.
+
+Novo build:
+
+- `tedflix-first-open-debug.apk`: `38c57854808624b824ca4b125900940f6ef266115835024f22c318f913eb22d2`
+- `tedflix-first-open-release-unsigned.apk`: `4bdbc49b5284294695d7e90a1ad86e5778603ef6ca3eaca6019466a1b192e8d3`
+
+O build `assembleDebug`, `assembleRelease` e `lintDebug` foi concluído com sucesso. O ambiente não possui aparelho Android conectado; portanto, a validação final da primeira abertura deve ser feita instalando este APK no mesmo celular. Se ainda falhar, a tela agora exibirá a exceção real e a última subetapa específica, em vez do wrapper genérico.

@@ -1,7 +1,6 @@
 package com.tedflix.app
 
 import android.app.Activity
-import android.content.pm.ActivityInfo
 import android.graphics.Color
 import android.net.Uri
 import android.os.Bundle
@@ -10,7 +9,6 @@ import android.os.Looper
 import android.util.Log
 import android.view.Gravity
 import android.view.View
-import android.view.Window
 import android.view.WindowInsets
 import android.view.WindowManager
 import android.widget.Button
@@ -86,9 +84,11 @@ class PlayerActivity : Activity() {
         super.onCreate(savedInstanceState)
         markStep("PlayerActivity criada")
         try {
-            requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE
+            // A orientação landscape já é declarada no Manifesto. Repetir a troca aqui
+            // durante o primeiro onCreate pode provocar uma recriação enquanto a UI nasce.
             window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
             enterImmersiveMode()
+            markStep("iniciando criação da interface")
             buildUi()
             // Aguarda a Activity terminar o primeiro layout antes de criar o player.
             // Isso evita corrida com a troca obrigatória para a orientação horizontal.
@@ -99,7 +99,7 @@ class PlayerActivity : Activity() {
             }
         } catch (error: Throwable) {
             Log.e(TAG, "Falha ao criar a interface do player", error)
-            showStartupError()
+            showStartupError(error)
         }
     }
 
@@ -123,7 +123,9 @@ class PlayerActivity : Activity() {
     }
 
     private fun buildUi() {
+        markStep("criando raiz da interface")
         val root = FrameLayout(this).apply { setBackgroundColor(Color.BLACK) }
+        markStep("criando PlayerView")
         playerView = PlayerView(this).apply {
             useController = false
             resizeMode = AspectRatioFrameLayout.RESIZE_MODE_FIT
@@ -132,20 +134,28 @@ class PlayerActivity : Activity() {
             setOnClickListener { toggleControls() }
         }
         root.addView(playerView, FrameLayout.LayoutParams(-1, -1))
+        markStep("PlayerView criada")
 
         overlay = FrameLayout(this).apply {
             setBackgroundColor(Color.TRANSPARENT)
             isClickable = false
         }
         root.addView(overlay, FrameLayout.LayoutParams(-1, -1))
+        markStep("overlay criado")
         buildTopBar()
+        markStep("barra superior criada")
         buildCenterControls()
+        markStep("controles centrais criados")
         buildBottomControls()
+        markStep("controles inferiores criados")
 
         loading = ProgressBar(this).apply { visibility = View.VISIBLE }
         overlay.addView(loading, centeredParams(54, 54))
+        markStep("loading criado")
         setContentView(root)
+        markStep("setContentView concluído")
         setControlsVisible(true)
+        markStep("interface pronta")
     }
 
     private fun buildTopBar() {
@@ -543,11 +553,8 @@ class PlayerActivity : Activity() {
         if (::overlay.isInitialized) setControlsVisible(true)
     }
 
-    private fun showStartupError() {
-        showDiagnosticScreen(
-            "Criação da interface",
-            IllegalStateException("A interface do player não pôde ser criada")
-        )
+    private fun showStartupError(error: Throwable) {
+        showDiagnosticScreen("Criação da interface", error)
     }
 
     private fun showDiagnosticScreen(
@@ -560,6 +567,8 @@ class PlayerActivity : Activity() {
             return
         }
         if (activityDestroyed || isFinishing || isDestroyedCompat()) return
+        val failedStep = lastStep
+        val activityName = this@PlayerActivity.javaClass.simpleName
         markStep("diagnóstico exibido: $stage")
         validationThread?.interrupt()
         validationThread = null
@@ -573,8 +582,8 @@ class PlayerActivity : Activity() {
             appendLine("TEDFLIX — DIAGNÓSTICO DE REPRODUÇÃO")
             appendLine()
             appendLine("Etapa: $stage")
-            appendLine("Activity: ${javaClass.simpleName}")
-            appendLine("Última etapa registrada: $lastStep")
+            appendLine("Activity: $activityName")
+            appendLine("Última etapa registrada: $failedStep")
             appendLine("Tipo: ${error.javaClass.name}")
             appendLine("Mensagem: ${error.message ?: "(sem mensagem)"}")
             appendLine("Causa: $cause")
