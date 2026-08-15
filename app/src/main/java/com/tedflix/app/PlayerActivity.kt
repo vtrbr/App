@@ -17,6 +17,7 @@ import android.widget.Button
 import android.widget.FrameLayout
 import android.widget.LinearLayout
 import android.widget.ProgressBar
+import android.widget.ScrollView
 import android.widget.SeekBar
 import android.widget.TextView
 import android.widget.Toast
@@ -35,6 +36,9 @@ import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.hls.HlsMediaSource
 import androidx.media3.ui.AspectRatioFrameLayout
 import androidx.media3.ui.PlayerView
+import java.io.InputStream
+import java.net.HttpURLConnection
+import java.net.URL
 import java.util.Locale
 
 @UnstableApi
@@ -65,6 +69,9 @@ class PlayerActivity : Activity() {
     private var player: ExoPlayer? = null
     private var controlsVisible = true
     private var activityDestroyed = false
+    @Volatile private var lastStep = "Activity ainda não inicializada"
+    @Volatile private var diagnosticUrl = ""
+    private var validationThread: Thread? = null
     private var lastDuration = 0L
     private val handler = Handler(Looper.getMainLooper())
     private val hideRunnable = Runnable { setControlsVisible(false) }
@@ -77,6 +84,7 @@ class PlayerActivity : Activity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        markStep("PlayerActivity criada")
         try {
             requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE
             window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
@@ -259,42 +267,95 @@ class PlayerActivity : Activity() {
     }
 
     private fun initializePlayer() {
-        val categoria = intent.getStringExtra(EXTRA_CATEGORIA).orEmpty()
-        val slug = intent.getStringExtra(EXTRA_SLUG).orEmpty()
-        if (categoria.isBlank() || slug.isBlank()) {
-            showError("Título inválido.")
-            return
-        }
-
-        val buffer = getSharedPreferences(PREFS, MODE_PRIVATE).getString(BUFFER_KEY, "equilibrado")
-        val loadControl = DefaultLoadControl.Builder()
-            .setBufferDurationsMs(bufferMin(buffer), bufferMax(buffer), 2_500, 5_000)
-            .build()
-        val streamUrl = "$API_BASE/filme-player/${Uri.encode(categoria)}/${Uri.encode(slug)}"
-        val mediaItem = MediaItem.Builder()
-            .setUri(streamUrl)
-            .setMimeType(MimeTypes.APPLICATION_M3U8)
-            .build()
-
-        val requestProperties = mapOf(
-            "Origin" to STREAM_ORIGIN,
-            "Referer" to STREAM_REFERER,
-            "Accept" to "*/*",
-            "Accept-Language" to "pt-BR,pt;q=0.9",
-            "Cache-Control" to "no-cache",
-            "Pragma" to "no-cache",
-        )
-
         try {
+            markStep("Intent recebido")
+            val categoria = intent.getStringExtra(EXTRA_CATEGORIA).orEmpty()
+            val slug = intent.getStringExtra(EXTRA_SLUG).orEmpty()
+            val titulo = intent.getStringExtra(EXTRA_TITULO).orEmpty()
+            if (categoria.isBlank() || slug.isBlank()) {
+                showDiagnosticScreen(
+                    "Intent/extras inválidos",
+                    IllegalArgumentException("categoria ou slug vazio"),
+                    "categoria='$categoria'\nslug='$slug'\ntitulo='$titulo'"
+                )
+                return
+            }
+
+            val streamUrl = "$API_BASE/filme-player/${Uri.encode(categoria)}/${Uri.encode(slug)}"
+            diagnosticUrl = streamUrl
+            markStep("streamUrl montada")
+            val buffer = getSharedPreferences(PREFS, MODE_PRIVATE).getString(BUFFER_KEY, "equilibrado")
+            val requestProperties = streamRequestProperties()
+            validationThread?.interrupt()
+            validationThread = Thread {
+                var connection: HttpURLConnection? = null
+                try {
+                    markStep("validando manifesto HTTP")
+                    connection = (URL(streamUrl).openConnection() as HttpURLConnection).apply {
+                        requestMethod = "GET"
+                        connectTimeout = 15_000
+                        readTimeout = 15_000
+                        instanceFollowRedirects = true
+                        requestProperties.forEach { (key, value) -> setRequestProperty(key, value) }
+                    }
+                    val status = connection.responseCode
+                    val contentType = connection.contentType ?: "não informado"
+                    val source = if (status in 200..299) connection.inputStream else connection.errorStream
+                    val preview = readPreview(source)
+                    val content = preview.trimStart().removePrefix("\uFEFF").trimStart()
+                    val details = "HTTP status: $status\nContent-Type: $contentType\nPrévia:\n${preview.take(1200)}"
+                    if (status !in 200..299) {
+                        throw StreamValidationException("A API/CDN respondeu HTTP $status", details)
+                    }
+                    if (!content.startsWith("#EXTM3U")) {
+                        throw StreamValidationException("A resposta não é uma playlist HLS (#EXTM3U ausente)", details)
+                    }
+                    markStep("URL validada: HTTP $status / $contentType")
+                    runOnUiThread {
+                        if (!isActivityAlive()) return@runOnUiThread
+                        createExoPlayer(streamUrl, buffer, requestProperties)
+                    }
+                } catch (error: Throwable) {
+                    if (error is InterruptedException || Thread.currentThread().isInterrupted) return@Thread
+                    Log.e(TAG, "Falha no preflight do manifesto", error)
+                    runOnUiThread {
+                        if (isActivityAlive()) showDiagnosticScreen("Validação do manifesto", error)
+                    }
+                } finally {
+                    connection?.disconnect()
+                }
+            }.apply {
+                name = "TedflixManifestValidation"
+                start()
+            }
+        } catch (error: Throwable) {
+            Log.e(TAG, "Falha antes de inicializar o player", error)
+            showDiagnosticScreen("Preparação do player", error)
+        }
+    }
+
+    private fun createExoPlayer(
+        streamUrl: String,
+        buffer: String?,
+        requestProperties: Map<String, String>,
+    ) {
+        try {
+            markStep("criando MediaItem")
+            val mediaItem = MediaItem.Builder()
+                .setUri(streamUrl)
+                .setMimeType(MimeTypes.APPLICATION_M3U8)
+                .build()
+            val loadControl = DefaultLoadControl.Builder()
+                .setBufferDurationsMs(bufferMin(buffer), bufferMax(buffer), 2_500, 5_000)
+                .build()
             val dataSourceFactory = DefaultHttpDataSource.Factory()
                 .setDefaultRequestProperties(requestProperties)
                 .setUserAgent(STREAM_USER_AGENT)
                 .setAllowCrossProtocolRedirects(true)
-
-            // A mesma DataSource.Factory é usada pelo HLS para o manifesto,
-            // playlists filhas, segmentos e chaves, preservando os headers.
+            markStep("criando HlsMediaSource")
             val mediaSource = HlsMediaSource.Factory(dataSourceFactory)
                 .createMediaSource(mediaItem)
+            markStep("criando ExoPlayer")
             val exo = ExoPlayer.Builder(this)
                 .setLoadControl(loadControl)
                 .build()
@@ -302,8 +363,10 @@ class PlayerActivity : Activity() {
             playerView.player = exo
             exo.addListener(object : Player.Listener {
                 override fun onPlaybackStateChanged(state: Int) {
+                    if (activityDestroyed) return
                     loading.visibility = if (state == Player.STATE_BUFFERING || state == Player.STATE_IDLE) View.VISIBLE else View.GONE
                     if (state == Player.STATE_READY) {
+                        markStep("Player pronto: STATE_READY")
                         loading.visibility = View.GONE
                         scheduleHide()
                     }
@@ -311,27 +374,63 @@ class PlayerActivity : Activity() {
                 }
 
                 override fun onIsPlayingChanged(isPlaying: Boolean) {
+                    if (activityDestroyed) return
                     playButton.text = if (isPlaying) "Ⅱ" else "▶"
                     if (isPlaying) scheduleHide() else setControlsVisible(true)
                 }
 
                 override fun onPlayerError(error: PlaybackException) {
+                    if (activityDestroyed) return
+                    markStep("erro de playback: ${error.errorCodeName}")
                     Log.e(TAG, "Falha ao carregar HLS: ${error.errorCodeName}", error)
-                    showError("Não foi possível reproduzir este vídeo. Verifique a conexão e tente novamente.")
+                    showDiagnosticScreen("Playback Media3/HTTP", error)
                 }
             })
             exo.setMediaSource(mediaSource)
+            markStep("preparando ExoPlayer")
             exo.prepare()
             exo.playWhenReady = true
+            markStep("reprodução solicitada")
             handler.post(progressRunnable)
         } catch (error: Throwable) {
-            Log.e(TAG, "Falha ao inicializar o player para $streamUrl", error)
+            Log.e(TAG, "Falha ao criar Media3/HlsMediaSource", error)
             player?.release()
             player = null
             if (::playerView.isInitialized) playerView.player = null
-            showError("Não foi possível abrir o player. Tente novamente.")
+            showDiagnosticScreen("Inicialização Media3/HlsMediaSource", error)
         }
     }
+
+    private fun streamRequestProperties() = mapOf(
+        "Origin" to STREAM_ORIGIN,
+        "Referer" to STREAM_REFERER,
+        "Accept" to "*/*",
+        "Accept-Language" to "pt-BR,pt;q=0.9",
+        "Cache-Control" to "no-cache",
+        "Pragma" to "no-cache",
+    )
+
+    private fun readPreview(input: InputStream?): String {
+        if (input == null) return "(resposta sem corpo)"
+        return try {
+            input.bufferedReader(Charsets.UTF_8).use { reader ->
+                val chars = CharArray(8192)
+                val count = reader.read(chars)
+                if (count <= 0) "(corpo vazio)" else String(chars, 0, count)
+            }
+        } catch (error: Throwable) {
+            "(não foi possível ler o corpo: ${error.message})"
+        }
+    }
+
+    private fun isActivityAlive() = !activityDestroyed && !isFinishing && !isDestroyedCompat()
+
+    private fun markStep(step: String) {
+        lastStep = step
+        Log.i(TAG, "[TEDFLIX] $step")
+    }
+
+    private class StreamValidationException(message: String, val details: String) : IllegalStateException(message)
 
     private fun reloadStream() {
         loading.visibility = View.VISIBLE
@@ -445,12 +544,93 @@ class PlayerActivity : Activity() {
     }
 
     private fun showStartupError() {
-        if (::overlay.isInitialized) {
-            showError("Não foi possível abrir o player. Tente novamente.")
-        } else if (!isFinishing) {
-            toast("Não foi possível abrir o player. Tente novamente.")
-            finish()
+        showDiagnosticScreen(
+            "Criação da interface",
+            IllegalStateException("A interface do player não pôde ser criada")
+        )
+    }
+
+    private fun showDiagnosticScreen(
+        stage: String,
+        error: Throwable,
+        extra: String? = null,
+    ) {
+        if (Looper.myLooper() != Looper.getMainLooper()) {
+            runOnUiThread { showDiagnosticScreen(stage, error, extra) }
+            return
         }
+        if (activityDestroyed || isFinishing || isDestroyedCompat()) return
+        markStep("diagnóstico exibido: $stage")
+        validationThread?.interrupt()
+        validationThread = null
+        player?.release()
+        player = null
+        val stack = Log.getStackTraceString(error).take(8_000)
+        val cause = generateSequence(error as Throwable?) { it.cause }
+            .toList().drop(1).firstOrNull()?.let { "${it.javaClass.name}: ${it.message ?: "(sem mensagem)"}" }
+            ?: "(sem causa encadeada)"
+        val details = buildString {
+            appendLine("TEDFLIX — DIAGNÓSTICO DE REPRODUÇÃO")
+            appendLine()
+            appendLine("Etapa: $stage")
+            appendLine("Activity: ${javaClass.simpleName}")
+            appendLine("Última etapa registrada: $lastStep")
+            appendLine("Tipo: ${error.javaClass.name}")
+            appendLine("Mensagem: ${error.message ?: "(sem mensagem)"}")
+            appendLine("Causa: $cause")
+            appendLine("Stream URL: ${diagnosticUrl.ifBlank { "(não montada)" }}")
+            if (!extra.isNullOrBlank()) {
+                appendLine()
+                appendLine(extra)
+            }
+            if (error is StreamValidationException) {
+                appendLine()
+                appendLine(error.details)
+            }
+            appendLine()
+            appendLine("Stack trace:")
+            append(stack)
+        }
+        val root = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(20), dp(20), dp(20), dp(20))
+            setBackgroundColor(Color.BLACK)
+        }
+        val heading = TextView(this).apply {
+            text = "Erro ao abrir o player"
+            textSize = 22f
+            setTextColor(Color.WHITE)
+            setTypeface(typeface, android.graphics.Typeface.BOLD)
+        }
+        root.addView(heading, LinearLayout.LayoutParams(-1, -2))
+        val scroll = ScrollView(this).apply {
+            isFillViewport = true
+            addView(TextView(this@PlayerActivity).apply {
+                text = details
+                textSize = 12f
+                setTextColor(Color.WHITE)
+                typeface = android.graphics.Typeface.MONOSPACE
+                setPadding(0, dp(18), 0, dp(18))
+                setTextIsSelectable(true)
+            })
+        }
+        root.addView(scroll, LinearLayout.LayoutParams(-1, 0, 1f))
+        val actions = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER
+        }
+        val retry = controlButton("Tentar novamente", 14).apply {
+            setOnClickListener {
+                activityDestroyed = false
+                buildUi()
+                window.decorView.post { if (isActivityAlive()) initializePlayer() }
+            }
+        }
+        val back = controlButton("Voltar", 14).apply { setOnClickListener { finish() } }
+        actions.addView(retry, LinearLayout.LayoutParams(0, dp(52), 1f))
+        actions.addView(back, LinearLayout.LayoutParams(0, dp(52), 1f))
+        root.addView(actions, LinearLayout.LayoutParams(-1, dp(64)))
+        setContentView(root)
     }
 
     private fun setControlsVisible(visible: Boolean) {
@@ -476,6 +656,8 @@ class PlayerActivity : Activity() {
 
     override fun onDestroy() {
         activityDestroyed = true
+        validationThread?.interrupt()
+        validationThread = null
         handler.removeCallbacks(progressRunnable)
         handler.removeCallbacks(hideRunnable)
         if (::playerView.isInitialized) playerView.player = null
