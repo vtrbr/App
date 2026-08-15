@@ -6,6 +6,7 @@ import android.content.Context
 import android.content.Intent
 import android.graphics.Color
 import android.os.Bundle
+import android.util.Log
 import android.view.View
 import android.webkit.JavascriptInterface
 import android.webkit.WebChromeClient
@@ -80,13 +81,23 @@ class MainActivity : Activity() {
         @JavascriptInterface
         fun openPlayer(categoria: String, slug: String, titulo: String) {
             activity.runOnUiThread {
-                activity.playerWasOpened = true
-                val intent = Intent(activity, PlayerActivity::class.java).apply {
-                    putExtra(PlayerActivity.EXTRA_CATEGORIA, categoria)
-                    putExtra(PlayerActivity.EXTRA_SLUG, slug)
-                    putExtra(PlayerActivity.EXTRA_TITULO, titulo)
+                if (categoria.isBlank() || slug.isBlank()) {
+                    Toast.makeText(activity, "Título inválido.", Toast.LENGTH_LONG).show()
+                    return@runOnUiThread
                 }
-                activity.startActivity(intent)
+                try {
+                    val intent = Intent(activity, PlayerActivity::class.java).apply {
+                        putExtra(PlayerActivity.EXTRA_CATEGORIA, categoria.trim())
+                        putExtra(PlayerActivity.EXTRA_SLUG, slug.trim())
+                        putExtra(PlayerActivity.EXTRA_TITULO, titulo.trim())
+                    }
+                    activity.playerWasOpened = true
+                    activity.startActivity(intent)
+                } catch (error: Throwable) {
+                    Log.e("TedflixMain", "Falha ao abrir o PlayerActivity", error)
+                    activity.playerWasOpened = false
+                    Toast.makeText(activity, "Não foi possível abrir o player.", Toast.LENGTH_LONG).show()
+                }
             }
         }
 

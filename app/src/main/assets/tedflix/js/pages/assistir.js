@@ -41,6 +41,17 @@ export default async function paginaAssistir(raiz, { categoria, slug }) {
   const voltar = () => history.back();
   let instancia = null;
 
+  // Registra a limpeza antes do handoff nativo. Sem isso, o retorno do
+  // PlayerActivity deixava a página Android sem o hook de destruição.
+  page.destruir = () => {
+    document.body.classList.remove("imersivo");
+    try {
+      screen.orientation?.unlock?.();
+    } catch (err) {}
+    instancia?.destruir?.();
+    limparPlayer();
+  };
+
   try {
     const nome = decodeURIComponent(slug).replace(/^\d+-/, "").replace(/-/g, " ");
 
@@ -81,13 +92,5 @@ export default async function paginaAssistir(raiz, { categoria, slug }) {
     );
   }
 
-  page.destruir = () => {
-    document.body.classList.remove("imersivo");
-    try {
-      screen.orientation?.unlock?.();
-    } catch (err) {}
-    instancia?.destruir?.();
-    limparPlayer();
-  };
   return page;
 }

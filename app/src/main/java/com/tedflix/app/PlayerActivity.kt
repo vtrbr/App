@@ -64,6 +64,7 @@ class PlayerActivity : Activity() {
     private lateinit var loading: ProgressBar
     private var player: ExoPlayer? = null
     private var controlsVisible = true
+    private var activityDestroyed = false
     private var lastDuration = 0L
     private val handler = Handler(Looper.getMainLooper())
     private val hideRunnable = Runnable { setControlsVisible(false) }
@@ -76,11 +77,22 @@ class PlayerActivity : Activity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE
-        window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
-        enterImmersiveMode()
-        buildUi()
-        initializePlayer()
+        try {
+            requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE
+            window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+            enterImmersiveMode()
+            buildUi()
+            // Aguarda a Activity terminar o primeiro layout antes de criar o player.
+            // Isso evita corrida com a troca obrigatória para a orientação horizontal.
+            window.decorView.post {
+                if (!activityDestroyed && !isFinishing && !isDestroyedCompat()) {
+                    initializePlayer()
+                }
+            }
+        } catch (error: Throwable) {
+            Log.e(TAG, "Falha ao criar a interface do player", error)
+            showStartupError()
+        }
     }
 
     private fun enterImmersiveMode() {
@@ -312,11 +324,11 @@ class PlayerActivity : Activity() {
             exo.prepare()
             exo.playWhenReady = true
             handler.post(progressRunnable)
-        } catch (error: Exception) {
+        } catch (error: Throwable) {
             Log.e(TAG, "Falha ao inicializar o player para $streamUrl", error)
             player?.release()
             player = null
-            playerView.player = null
+            if (::playerView.isInitialized) playerView.player = null
             showError("Não foi possível abrir o player. Tente novamente.")
         }
     }
@@ -339,6 +351,7 @@ class PlayerActivity : Activity() {
     }
 
     private fun updateProgress() {
+        if (!::progress.isInitialized || !::currentTime.isInitialized || !::durationTime.isInitialized) return
         val exo = player ?: return
         lastDuration = exo.duration.takeIf { it > 0 } ?: 0L
         val current = exo.currentPosition.coerceAtLeast(0L)
@@ -426,12 +439,22 @@ class PlayerActivity : Activity() {
     }
 
     private fun showError(message: String) {
-        loading.visibility = View.GONE
+        if (::loading.isInitialized) loading.visibility = View.GONE
         toast(message)
-        setControlsVisible(true)
+        if (::overlay.isInitialized) setControlsVisible(true)
+    }
+
+    private fun showStartupError() {
+        if (::overlay.isInitialized) {
+            showError("Não foi possível abrir o player. Tente novamente.")
+        } else if (!isFinishing) {
+            toast("Não foi possível abrir o player. Tente novamente.")
+            finish()
+        }
     }
 
     private fun setControlsVisible(visible: Boolean) {
+        if (!::overlay.isInitialized) return
         controlsVisible = visible
         overlay.alpha = 1f
         overlay.children().forEach { child -> child.visibility = if (visible) View.VISIBLE else View.INVISIBLE }
@@ -452,9 +475,10 @@ class PlayerActivity : Activity() {
     }
 
     override fun onDestroy() {
+        activityDestroyed = true
         handler.removeCallbacks(progressRunnable)
         handler.removeCallbacks(hideRunnable)
-        playerView.player = null
+        if (::playerView.isInitialized) playerView.player = null
         player?.release()
         player = null
         super.onDestroy()
@@ -511,7 +535,13 @@ class PlayerActivity : Activity() {
             cornerRadii = floatArrayOf(dp(18).toFloat(), dp(18).toFloat(), dp(18).toFloat(), dp(18).toFloat(), dp(18).toFloat(), dp(18).toFloat(), dp(18).toFloat(), dp(18).toFloat())
         }
 
-    private fun toast(message: String) = Toast.makeText(this, message, Toast.LENGTH_LONG).show()
+    private fun toast(message: String) {
+        if (!isFinishing && !isDestroyedCompat()) {
+            Toast.makeText(applicationContext, message, Toast.LENGTH_LONG).show()
+        }
+    }
+
+    private fun isDestroyedCompat(): Boolean = android.os.Build.VERSION.SDK_INT >= 17 && isDestroyed
 }
 
 private fun FrameLayout.children(): Sequence<View> = sequence {
