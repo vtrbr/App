@@ -7,6 +7,7 @@ import android.net.Uri
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
+import android.util.Log
 import android.view.Gravity
 import android.view.View
 import android.view.Window
@@ -28,8 +29,10 @@ import androidx.media3.common.PlaybackParameters
 import androidx.media3.common.Player
 import androidx.media3.common.Tracks
 import androidx.media3.common.util.UnstableApi
+import androidx.media3.datasource.DefaultHttpDataSource
 import androidx.media3.exoplayer.DefaultLoadControl
 import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.exoplayer.hls.HlsMediaSource
 import androidx.media3.ui.AspectRatioFrameLayout
 import androidx.media3.ui.PlayerView
 import java.util.Locale
@@ -43,6 +46,12 @@ class PlayerActivity : Activity() {
         const val PREFS = "tedflix_preferences"
         const val BUFFER_KEY = "buffer"
         private const val API_BASE = "https://ted.cryptitys.site/api"
+        private const val STREAM_ORIGIN = "https://novelasflix.video"
+        private const val STREAM_REFERER = "https://novelasflix.video/"
+        private const val STREAM_USER_AGENT =
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 " +
+                "(KHTML, like Gecko) Chrome/150.0.0.0 Safari/537.36"
+        private const val TAG = "TedflixPlayer"
     }
 
     private lateinit var playerView: PlayerView
@@ -244,44 +253,72 @@ class PlayerActivity : Activity() {
             showError("Título inválido.")
             return
         }
+
         val buffer = getSharedPreferences(PREFS, MODE_PRIVATE).getString(BUFFER_KEY, "equilibrado")
         val loadControl = DefaultLoadControl.Builder()
             .setBufferDurationsMs(bufferMin(buffer), bufferMax(buffer), 2_500, 5_000)
             .build()
-        player = ExoPlayer.Builder(this)
-            .setLoadControl(loadControl)
+        val streamUrl = "$API_BASE/filme-player/${Uri.encode(categoria)}/${Uri.encode(slug)}"
+        val mediaItem = MediaItem.Builder()
+            .setUri(streamUrl)
+            .setMimeType(MimeTypes.APPLICATION_M3U8)
             .build()
-            .also { exo ->
-                playerView.player = exo
-                exo.addListener(object : Player.Listener {
-                    override fun onPlaybackStateChanged(state: Int) {
-                        loading.visibility = if (state == Player.STATE_BUFFERING || state == Player.STATE_IDLE) View.VISIBLE else View.GONE
-                        if (state == Player.STATE_READY) {
-                            loading.visibility = View.GONE
-                            scheduleHide()
-                        }
-                        if (state == Player.STATE_ENDED) setControlsVisible(true)
-                    }
 
-                    override fun onIsPlayingChanged(isPlaying: Boolean) {
-                        playButton.text = if (isPlaying) "Ⅱ" else "▶"
-                        if (isPlaying) scheduleHide() else setControlsVisible(true)
-                    }
+        val requestProperties = mapOf(
+            "Origin" to STREAM_ORIGIN,
+            "Referer" to STREAM_REFERER,
+            "Accept" to "*/*",
+            "Accept-Language" to "pt-BR,pt;q=0.9",
+            "Cache-Control" to "no-cache",
+            "Pragma" to "no-cache",
+        )
 
-                    override fun onPlayerError(error: PlaybackException) {
-                        showError("Não foi possível reproduzir este vídeo. Verifique a conexão e tente novamente.")
+        try {
+            val dataSourceFactory = DefaultHttpDataSource.Factory()
+                .setDefaultRequestProperties(requestProperties)
+                .setUserAgent(STREAM_USER_AGENT)
+                .setAllowCrossProtocolRedirects(true)
+
+            // A mesma DataSource.Factory é usada pelo HLS para o manifesto,
+            // playlists filhas, segmentos e chaves, preservando os headers.
+            val mediaSource = HlsMediaSource.Factory(dataSourceFactory)
+                .createMediaSource(mediaItem)
+            val exo = ExoPlayer.Builder(this)
+                .setLoadControl(loadControl)
+                .build()
+            player = exo
+            playerView.player = exo
+            exo.addListener(object : Player.Listener {
+                override fun onPlaybackStateChanged(state: Int) {
+                    loading.visibility = if (state == Player.STATE_BUFFERING || state == Player.STATE_IDLE) View.VISIBLE else View.GONE
+                    if (state == Player.STATE_READY) {
+                        loading.visibility = View.GONE
+                        scheduleHide()
                     }
-                })
-                val streamUrl = "$API_BASE/filme-player/${Uri.encode(categoria)}/${Uri.encode(slug)}"
-                val item = MediaItem.Builder()
-                    .setUri(streamUrl)
-                    .setMimeType(MimeTypes.APPLICATION_M3U8)
-                    .build()
-                exo.setMediaItem(item)
-                exo.prepare()
-                exo.playWhenReady = true
-            }
-        handler.post(progressRunnable)
+                    if (state == Player.STATE_ENDED) setControlsVisible(true)
+                }
+
+                override fun onIsPlayingChanged(isPlaying: Boolean) {
+                    playButton.text = if (isPlaying) "Ⅱ" else "▶"
+                    if (isPlaying) scheduleHide() else setControlsVisible(true)
+                }
+
+                override fun onPlayerError(error: PlaybackException) {
+                    Log.e(TAG, "Falha ao carregar HLS: ${error.errorCodeName}", error)
+                    showError("Não foi possível reproduzir este vídeo. Verifique a conexão e tente novamente.")
+                }
+            })
+            exo.setMediaSource(mediaSource)
+            exo.prepare()
+            exo.playWhenReady = true
+            handler.post(progressRunnable)
+        } catch (error: Exception) {
+            Log.e(TAG, "Falha ao inicializar o player para $streamUrl", error)
+            player?.release()
+            player = null
+            playerView.player = null
+            showError("Não foi possível abrir o player. Tente novamente.")
+        }
     }
 
     private fun reloadStream() {
