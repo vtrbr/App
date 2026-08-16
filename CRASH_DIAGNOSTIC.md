@@ -68,3 +68,22 @@ Novo build:
 - `tedflix-first-open-release-unsigned.apk`: `4bdbc49b5284294695d7e90a1ad86e5778603ef6ca3eaca6019466a1b192e8d3`
 
 O build `assembleDebug`, `assembleRelease` e `lintDebug` foi concluído com sucesso. O ambiente não possui aparelho Android conectado; portanto, a validação final da primeira abertura deve ser feita instalando este APK no mesmo celular. Se ainda falhar, a tela agora exibirá a exceção real e a última subetapa específica, em vez do wrapper genérico.
+
+## WindowInsetsController — causa confirmada
+
+O stack trace do aparelho confirmou `NullPointerException` em `PhoneWindow.getInsetsController`, chamado por `PlayerActivity.enterImmersiveMode(PlayerActivity.kt:109)` durante `onCreate`. Na versão anterior, o código acessava `window.insetsController?.hide(...)`; apesar do operador seguro no retorno, a implementação interna de `Window.getInsetsController()` acessava um `DecorView` ainda nulo, causando a exceção antes de `setContentView`.
+
+A documentação oficial do Android recomenda usar `WindowCompat.getInsetsController(window, window.decorView)` e `WindowInsetsControllerCompat.hide(WindowInsetsCompat.Type.systemBars())` para immersive mode. A própria documentação demonstra a configuração no `onCreate`, mas o aparelho demonstrou que o `DecorView` dessa Activity ainda não estava pronto no momento específico. A correção deve, portanto, adiar a chamada até depois de `setContentView`/primeiro layout e manter um fallback legado baseado em `systemUiVisibility` caso o controller compatível não esteja disponível.
+
+Referências oficiais: https://developer.android.com/develop/ui/views/layout/immersive ; https://developer.android.com/develop/ui/views/layout/edge-to-edge ; https://developer.android.com/reference/androidx/core/view/WindowInsetsControllerCompat.
+
+## Reparo definitivo do crash no modo imersivo
+
+O stack trace fornecido pelo aparelho confirmou a causa exata: `NullPointerException` em `PhoneWindow.getInsetsController`, chamada por `PlayerActivity.enterImmersiveMode(PlayerActivity.kt:109)` durante `onCreate(PlayerActivity.kt:90)`. A `DecorView` ainda não estava pronta, então `window.insetsController` acessava um objeto interno nulo. O botão “Tentar novamente” funcionava porque, na segunda tentativa, a janela já havia concluído parte da criação.
+
+A correção mantém ExoPlayer, HlsMediaSource, headers e o fluxo HLS intactos. `enterImmersiveMode()` agora só é chamado depois de `setContentView`, no próximo ciclo da `DecorView`; verifica se a Activity está viva, usa `decorView.windowInsetsController` apenas quando disponível, aplica flags legadas como fallback e captura qualquer falha visual sem interromper a inicialização do player. Assim, o modo fullscreen não pode mais derrubar a Activity antes da criação do HLS.
+
+Build validado com `assembleDebug`, `assembleRelease` e `lintDebug`.
+
+- `tedflix-insets-fix-debug.apk`: `a19acf484583773fd2d0d1a42e03293a8c3c1a191ed2709c7a9577236011b614`
+- `tedflix-insets-fix-release-unsigned.apk`: `95a13dd8a666308bb11329bfed55d9988470f9c9f9ae8c406d4c1fb861aee1db`

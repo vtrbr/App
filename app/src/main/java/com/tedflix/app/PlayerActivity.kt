@@ -87,14 +87,16 @@ class PlayerActivity : Activity() {
             // A orientação landscape já é declarada no Manifesto. Repetir a troca aqui
             // durante o primeiro onCreate pode provocar uma recriação enquanto a UI nasce.
             window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
-            enterImmersiveMode()
             markStep("iniciando criação da interface")
             buildUi()
-            // Aguarda a Activity terminar o primeiro layout antes de criar o player.
-            // Isso evita corrida com a troca obrigatória para a orientação horizontal.
+            // A DecorView só é garantidamente criada depois de setContentView.
+            // O modo imersivo e o player são iniciados no próximo ciclo do layout.
             window.decorView.post {
                 if (!activityDestroyed && !isFinishing && !isDestroyedCompat()) {
-                    initializePlayer()
+                    enterImmersiveMode()
+                    if (!activityDestroyed && !isFinishing && !isDestroyedCompat()) {
+                        initializePlayer()
+                    }
                 }
             }
         } catch (error: Throwable) {
@@ -104,14 +106,12 @@ class PlayerActivity : Activity() {
     }
 
     private fun enterImmersiveMode() {
-        window.setFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN, WindowManager.LayoutParams.FLAG_FULLSCREEN)
-        if (android.os.Build.VERSION.SDK_INT >= 30) {
-            window.insetsController?.hide(WindowInsets.Type.systemBars())
-            window.insetsController?.systemBarsBehavior =
-                android.view.WindowInsetsController.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
-        } else {
+        if (!isActivityAlive()) return
+        try {
+            window.setFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN, WindowManager.LayoutParams.FLAG_FULLSCREEN)
+            val decorView = window.decorView
             @Suppress("DEPRECATION")
-            window.decorView.systemUiVisibility = (
+            val legacyFlags = (
                 View.SYSTEM_UI_FLAG_FULLSCREEN or
                     View.SYSTEM_UI_FLAG_HIDE_NAVIGATION or
                     View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY or
@@ -119,6 +119,35 @@ class PlayerActivity : Activity() {
                     View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION or
                     View.SYSTEM_UI_FLAG_LAYOUT_STABLE
                 )
+            if (android.os.Build.VERSION.SDK_INT >= 30) {
+                val controller = decorView.windowInsetsController
+                if (controller != null) {
+                    controller.systemBarsBehavior =
+                        android.view.WindowInsetsController.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+                    controller.hide(WindowInsets.Type.systemBars())
+                } else {
+                    @Suppress("DEPRECATION")
+                    decorView.systemUiVisibility = legacyFlags
+                    Log.w(TAG, "WindowInsetsController ainda nulo; usando flags legadas")
+                }
+            } else {
+                @Suppress("DEPRECATION")
+                decorView.systemUiVisibility = legacyFlags
+            }
+            markStep("modo imersivo aplicado")
+        } catch (error: Throwable) {
+            // O modo imersivo é visual e não pode impedir a criação do player.
+            Log.w(TAG, "Não foi possível aplicar modo imersivo; continuando com a UI", error)
+            try {
+                @Suppress("DEPRECATION")
+                window.decorView.systemUiVisibility = (
+                    View.SYSTEM_UI_FLAG_FULLSCREEN or
+                        View.SYSTEM_UI_FLAG_HIDE_NAVIGATION or
+                        View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY
+                    )
+            } catch (fallbackError: Throwable) {
+                Log.w(TAG, "Fallback do modo imersivo também falhou", fallbackError)
+            }
         }
     }
 
