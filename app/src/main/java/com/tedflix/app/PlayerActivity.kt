@@ -65,7 +65,8 @@ class PlayerActivity : Activity() {
     private lateinit var titleView: TextView
     private lateinit var loading: ProgressBar
     private var player: ExoPlayer? = null
-    private var controlsVisible = true
+    private var controlsVisible = false
+    private var playerReady = false
     private var activityDestroyed = false
     @Volatile private var lastStep = "Activity ainda não inicializada"
     @Volatile private var diagnosticUrl = ""
@@ -158,7 +159,9 @@ class PlayerActivity : Activity() {
         playerView = PlayerView(this).apply {
             useController = false
             resizeMode = AspectRatioFrameLayout.RESIZE_MODE_FIT
-            setShowBuffering(PlayerView.SHOW_BUFFERING_ALWAYS)
+            // O spinner interno ALWAYS continuava aparecendo mesmo com o vídeo pronto.
+            // O loader customizado abaixo será controlado exclusivamente por STATE_READY.
+            setShowBuffering(PlayerView.SHOW_BUFFERING_NEVER)
             setBackgroundColor(Color.BLACK)
             setOnClickListener { toggleControls() }
         }
@@ -167,7 +170,12 @@ class PlayerActivity : Activity() {
 
         overlay = FrameLayout(this).apply {
             setBackgroundColor(Color.TRANSPARENT)
-            isClickable = false
+            isClickable = true
+            // Um toque em qualquer área livre alterna os controles; quando estão
+            // visíveis, o toque os fecha imediatamente.
+            setOnClickListener {
+                if (playerReady) toggleControls()
+            }
         }
         root.addView(overlay, FrameLayout.LayoutParams(-1, -1))
         markStep("overlay criado")
@@ -183,7 +191,9 @@ class PlayerActivity : Activity() {
         markStep("loading criado")
         setContentView(root)
         markStep("setContentView concluído")
-        setControlsVisible(true)
+        // Enquanto o manifesto e o primeiro frame não estão prontos, somente o
+        // loader fica visível. Os controles entram após STATE_READY.
+        setControlsVisible(false)
         markStep("interface pronta")
     }
 
@@ -379,6 +389,9 @@ class PlayerActivity : Activity() {
         requestProperties: Map<String, String>,
     ) {
         try {
+            playerReady = false
+            loading.visibility = View.VISIBLE
+            setControlsVisible(false)
             markStep("criando MediaItem")
             val mediaItem = MediaItem.Builder()
                 .setUri(streamUrl)
@@ -403,11 +416,17 @@ class PlayerActivity : Activity() {
             exo.addListener(object : Player.Listener {
                 override fun onPlaybackStateChanged(state: Int) {
                     if (activityDestroyed) return
-                    loading.visibility = if (state == Player.STATE_BUFFERING || state == Player.STATE_IDLE) View.VISIBLE else View.GONE
                     if (state == Player.STATE_READY) {
+                        playerReady = true
                         markStep("Player pronto: STATE_READY")
                         loading.visibility = View.GONE
+                        setControlsVisible(true)
                         scheduleHide()
+                    } else if (!playerReady) {
+                        // Antes do primeiro STATE_READY, o loader permanece visível
+                        // e os controles continuam ocultos.
+                        loading.visibility = View.VISIBLE
+                        setControlsVisible(false)
                     }
                     if (state == Player.STATE_ENDED) setControlsVisible(true)
                 }
@@ -415,6 +434,7 @@ class PlayerActivity : Activity() {
                 override fun onIsPlayingChanged(isPlaying: Boolean) {
                     if (activityDestroyed) return
                     playButton.text = if (isPlaying) "Ⅱ" else "▶"
+                    if (!playerReady) return
                     if (isPlaying) scheduleHide() else setControlsVisible(true)
                 }
 
@@ -472,7 +492,9 @@ class PlayerActivity : Activity() {
     private class StreamValidationException(message: String, val details: String) : IllegalStateException(message)
 
     private fun reloadStream() {
+        playerReady = false
         loading.visibility = View.VISIBLE
+        setControlsVisible(false)
         player?.seekTo(0)
         player?.prepare()
         player?.playWhenReady = true
@@ -570,10 +592,16 @@ class PlayerActivity : Activity() {
     }
 
     private fun choose(title: String, labels: List<String>, selected: (String) -> Unit) {
-        android.app.AlertDialog.Builder(this)
+        val dialog = android.app.AlertDialog.Builder(this)
             .setTitle(title)
-            .setItems(labels.toTypedArray()) { _, which -> selected(labels[which]); setControlsVisible(true) }
-            .show()
+            .setItems(labels.toTypedArray()) { _, which ->
+                selected(labels[which])
+                setControlsVisible(false)
+            }
+            .create()
+        dialog.setCanceledOnTouchOutside(true)
+        dialog.setOnCancelListener { setControlsVisible(false) }
+        dialog.show()
     }
 
     private fun showError(message: String) {
@@ -675,7 +703,13 @@ class PlayerActivity : Activity() {
         if (!::overlay.isInitialized) return
         controlsVisible = visible
         overlay.alpha = 1f
-        overlay.children().forEach { child -> child.visibility = if (visible) View.VISIBLE else View.INVISIBLE }
+        overlay.children().forEach { child ->
+            // O loader possui ciclo próprio e não pode ser escondido quando os
+            // controles são fechados antes do primeiro STATE_READY.
+            if (child !== loading) {
+                child.visibility = if (visible) View.VISIBLE else View.INVISIBLE
+            }
+        }
         if (visible) scheduleHide()
     }
 
