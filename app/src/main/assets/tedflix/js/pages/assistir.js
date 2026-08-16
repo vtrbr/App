@@ -21,7 +21,7 @@ async function modoCinema(alvo) {
   }
 }
 
-export default async function paginaAssistir(raiz, { categoria, slug }) {
+export default async function paginaAssistir(raiz, { categoria, slug, fila = [] }) {
   document.body.classList.add("imersivo");
 
   const page = el("div", { class: "page assistir" });
@@ -58,7 +58,7 @@ export default async function paginaAssistir(raiz, { categoria, slug }) {
     // No Android, a interface permanece igual, mas a reprodução é delegada
     // ao player nativo para suportar HLS e tela cheia horizontal.
     if (window.AndroidPlayer && typeof window.AndroidPlayer.openPlayer === "function") {
-      window.AndroidPlayer.openPlayer(categoria, slug, nome);
+      window.AndroidPlayer.openPlayer(categoria, slug, nome, JSON.stringify(Array.isArray(fila) ? fila : []));
       return page;
     }
 
@@ -82,7 +82,7 @@ export default async function paginaAssistir(raiz, { categoria, slug }) {
     const retry = el("button", { class: "btn primary" }, "Tentar novamente");
     retry.addEventListener("click", () => {
       raiz.innerHTML = "";
-      paginaAssistir(raiz, { categoria, slug });
+      paginaAssistir(raiz, { categoria, slug, fila });
     });
     caixa.append(
       el("div", { class: "center" }, [

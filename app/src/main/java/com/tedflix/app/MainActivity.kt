@@ -137,7 +137,7 @@ class MainActivity : Activity() {
 
     private class AndroidPlayerBridge(private val activity: MainActivity) {
         @JavascriptInterface
-        fun openPlayer(categoria: String?, slug: String?, titulo: String?) {
+        fun openPlayer(categoria: String?, slug: String?, titulo: String?, filaJson: String?) {
             val categoriaValue = categoria.orEmpty().trim()
             val slugValue = slug.orEmpty().trim()
             val tituloValue = titulo.orEmpty().trim()
@@ -151,6 +151,7 @@ class MainActivity : Activity() {
                         putExtra(PlayerActivity.EXTRA_CATEGORIA, categoriaValue)
                         putExtra(PlayerActivity.EXTRA_SLUG, slugValue)
                         putExtra(PlayerActivity.EXTRA_TITULO, tituloValue)
+                        putExtra(PlayerActivity.EXTRA_NEXT_EPISODES, filaJson.orEmpty())
                     }
                     activity.playerWasOpened = true
                     activity.startActivity(intent)

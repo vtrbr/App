@@ -34,7 +34,8 @@ function marcarNav(rota) {
 /* ---------- rotas ---------- */
 function resolver(hash) {
   const rota = (hash || "#/").replace(/^#/, "") || "/";
-  const p = rota.split("/").filter(Boolean);
+  const [caminho, queryString = ""] = rota.split("?");
+  const p = caminho.split("/").filter(Boolean);
 
   if (!p.length) return (r) => paginaInicio(r);
   if (p[0] === "filmes")
@@ -51,8 +52,18 @@ function resolver(hash) {
   if (p[0] === "busca") return (r) => paginaBusca(r);
   if (p[0] === "titulo" && p.length >= 4)
     return (r) => paginaDetalhe(r, { tipo: p[1], categoria: p[2], slug: p[3] });
-  if (p[0] === "assistir" && p.length >= 3)
-    return (r) => paginaAssistir(r, { categoria: p[1], slug: p[2] });
+  if (p[0] === "assistir" && p.length >= 3) {
+    const params = new URLSearchParams(queryString);
+    let fila = [];
+    try {
+      const valor = params.get("fila");
+      fila = valor ? JSON.parse(valor) : [];
+      if (!Array.isArray(fila)) fila = [];
+    } catch (e) {
+      fila = [];
+    }
+    return (r) => paginaAssistir(r, { categoria: p[1], slug: p[2], fila });
+  }
   if (p[0] === "config") return (r) => paginaConfiguracoes(r);
 
 

@@ -112,12 +112,23 @@ async function blocoTemporadas(categoria, slug) {
         return;
       }
       const frag = document.createDocumentFragment();
-      eps.forEach((ep) => {
+      const dadosEpisodio = (ep) => {
         const p = parseLink(ep.link || ep.link_assistir);
         const cat = ep.categoria || p.categoria || categoria;
         const sl = ep.slug || p.slug;
+        if (!sl) return null;
+        return {
+          categoria: cat,
+          slug: sl,
+          titulo: `${ep.numero ? `${ep.numero}. ` : ""}${ep.titulo || "Episódio"}`,
+        };
+      };
+      eps.forEach((ep, index) => {
+        const info = dadosEpisodio(ep);
+        const fila = eps.slice(index + 1).map(dadosEpisodio).filter(Boolean);
+        const query = fila.length ? `?fila=${encodeURIComponent(JSON.stringify(fila))}` : "";
         frag.append(
-          el("a", { class: "ep", href: sl ? `#/assistir/${cat}/${sl}` : "#" }, [
+          el("a", { class: "ep", href: info ? `#/assistir/${info.categoria}/${info.slug}${query}` : "#" }, [
             el("div", { class: "cap" }, [
               ep.imagem
                 ? el("img", {

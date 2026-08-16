@@ -38,6 +38,7 @@ import java.io.InputStream
 import java.net.HttpURLConnection
 import java.net.URL
 import java.util.Locale
+import org.json.JSONArray
 
 @UnstableApi
 class PlayerActivity : Activity() {
@@ -45,6 +46,7 @@ class PlayerActivity : Activity() {
         const val EXTRA_CATEGORIA = "categoria"
         const val EXTRA_SLUG = "slug"
         const val EXTRA_TITULO = "titulo"
+        const val EXTRA_NEXT_EPISODES = "next_episodes"
         const val PREFS = "tedflix_preferences"
         const val BUFFER_KEY = "buffer"
         private const val API_BASE = "https://ted.cryptitys.site/api"
@@ -58,6 +60,8 @@ class PlayerActivity : Activity() {
 
     private lateinit var playerView: PlayerView
     private lateinit var overlay: FrameLayout
+    private lateinit var topBar: View
+    private lateinit var nextButton: Button
     private lateinit var progress: SeekBar
     private lateinit var currentTime: TextView
     private lateinit var durationTime: TextView
@@ -65,6 +69,10 @@ class PlayerActivity : Activity() {
     private lateinit var titleView: TextView
     private lateinit var loading: ProgressBar
     private var player: ExoPlayer? = null
+    private var currentCategoria = ""
+    private var currentSlug = ""
+    private var currentTitle = ""
+    private val nextEpisodes = mutableListOf<NextEpisode>()
     private var controlsVisible = false
     private var playerReady = false
     private var activityDestroyed = false
@@ -74,6 +82,8 @@ class PlayerActivity : Activity() {
     private var lastDuration = 0L
     private val handler = Handler(Looper.getMainLooper())
     private val hideRunnable = Runnable { setControlsVisible(false) }
+    private data class NextEpisode(val categoria: String, val slug: String, val titulo: String)
+
     private val progressRunnable = object : Runnable {
         override fun run() {
             updateProgress()
@@ -84,6 +94,7 @@ class PlayerActivity : Activity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         markStep("PlayerActivity criada")
+        loadEpisodeContext()
         try {
             // A orientação landscape já é declarada no Manifesto. Repetir a troca aqui
             // durante o primeiro onCreate pode provocar uma recriação enquanto a UI nasce.
@@ -152,6 +163,53 @@ class PlayerActivity : Activity() {
         }
     }
 
+    private fun loadEpisodeContext() {
+        currentCategoria = intent.getStringExtra(EXTRA_CATEGORIA).orEmpty().trim()
+        currentSlug = intent.getStringExtra(EXTRA_SLUG).orEmpty().trim()
+        currentTitle = intent.getStringExtra(EXTRA_TITULO).orEmpty().trim().ifBlank { "Tedflix" }
+        nextEpisodes.clear()
+        val raw = intent.getStringExtra(EXTRA_NEXT_EPISODES).orEmpty().trim()
+        if (raw.isBlank() || raw == "[]") return
+        try {
+            val array = JSONArray(raw)
+            for (index in 0 until array.length()) {
+                val item = array.optJSONObject(index) ?: continue
+                val categoria = item.optString("categoria").trim()
+                val slug = item.optString("slug").trim()
+                val titulo = item.optString("titulo").trim().ifBlank { "Próximo episódio" }
+                if (categoria.isNotBlank() && slug.isNotBlank()) {
+                    nextEpisodes += NextEpisode(categoria, slug, titulo)
+                }
+            }
+        } catch (error: Throwable) {
+            Log.w(TAG, "Fila de próximos episódios inválida; continuando sem avanço automático", error)
+        }
+    }
+
+    private fun updateNextEpisodeButton() {
+        if (::nextButton.isInitialized) {
+            nextButton.visibility = if (nextEpisodes.isNotEmpty() && playerReady) View.VISIBLE else View.GONE
+        }
+    }
+
+    private fun playNextEpisode() {
+        if (!isActivityAlive() || nextEpisodes.isEmpty()) return
+        val next = nextEpisodes.removeAt(0)
+        currentCategoria = next.categoria
+        currentSlug = next.slug
+        currentTitle = next.titulo
+        titleView.text = currentTitle
+        playerReady = false
+        updateNextEpisodeButton()
+        loading.visibility = View.VISIBLE
+        setControlsVisible(false)
+        handler.removeCallbacks(progressRunnable)
+        playerView.player = null
+        player?.release()
+        player = null
+        initializePlayer()
+    }
+
     private fun buildUi() {
         markStep("criando raiz da interface")
         val root = FrameLayout(this).apply { setBackgroundColor(Color.BLACK) }
@@ -171,11 +229,9 @@ class PlayerActivity : Activity() {
         overlay = FrameLayout(this).apply {
             setBackgroundColor(Color.TRANSPARENT)
             isClickable = true
-            // Um toque em qualquer área livre alterna os controles; quando estão
-            // visíveis, o toque os fecha imediatamente.
-            setOnClickListener {
-                if (playerReady) toggleControls()
-            }
+            // O toque em área livre alterna: fecha os controles quando abertos
+            // e permite reabri-los quando já estão ocultos.
+            setOnClickListener { if (playerReady) toggleControls() }
         }
         root.addView(overlay, FrameLayout.LayoutParams(-1, -1))
         markStep("overlay criado")
@@ -204,6 +260,7 @@ class PlayerActivity : Activity() {
             setPadding(dp(22), dp(14), dp(22), dp(14))
             background = gradient(Color.argb(185, 0, 0, 0), 0f, 0f, 0f, 1f)
             isClickable = true
+            setOnClickListener { if (playerReady) setControlsVisible(false) }
         }
         val back = controlButton("‹", 34).apply {
             contentDescription = "Voltar"
@@ -220,11 +277,19 @@ class PlayerActivity : Activity() {
             setPadding(dp(16), 0, dp(16), 0)
         }
         bar.addView(titleView, LinearLayout.LayoutParams(0, -2, 1f))
+        nextButton = controlButton("Próximo ›", 13).apply {
+            contentDescription = "Próximo episódio"
+            visibility = View.GONE
+            setOnClickListener { playNextEpisode() }
+        }
+        bar.addView(nextButton, LinearLayout.LayoutParams(dp(112), dp(54)))
+        updateNextEpisodeButton()
         val reload = controlButton("↻", 28).apply {
             contentDescription = "Recarregar"
             setOnClickListener { reloadStream() }
         }
         bar.addView(reload, LinearLayout.LayoutParams(dp(54), dp(54)))
+        topBar = bar
         val params = FrameLayout.LayoutParams(-1, dp(82), Gravity.TOP)
         overlay.addView(bar, params)
     }
@@ -235,6 +300,7 @@ class PlayerActivity : Activity() {
             gravity = Gravity.CENTER
             setPadding(dp(18), 0, dp(18), 0)
             isClickable = true
+            setOnClickListener { if (playerReady) toggleControls() }
         }
         val back10 = roundButton("↺\n10", 16).apply {
             contentDescription = "Retroceder 10 segundos"
@@ -264,6 +330,7 @@ class PlayerActivity : Activity() {
             setPadding(dp(22), dp(8), dp(22), dp(20))
             background = gradient(Color.argb(210, 0, 0, 0), 1f, 0f, 0f, 0f)
             isClickable = true
+            setOnClickListener { if (playerReady) toggleControls() }
         }
         val seekRow = LinearLayout(this).apply { gravity = Gravity.CENTER_VERTICAL }
         currentTime = timeText("0:00")
@@ -318,9 +385,9 @@ class PlayerActivity : Activity() {
     private fun initializePlayer() {
         try {
             markStep("Intent recebido")
-            val categoria = intent.getStringExtra(EXTRA_CATEGORIA).orEmpty()
-            val slug = intent.getStringExtra(EXTRA_SLUG).orEmpty()
-            val titulo = intent.getStringExtra(EXTRA_TITULO).orEmpty()
+            val categoria = currentCategoria
+            val slug = currentSlug
+            val titulo = currentTitle
             if (categoria.isBlank() || slug.isBlank()) {
                 showDiagnosticScreen(
                     "Intent/extras inválidos",
@@ -418,6 +485,7 @@ class PlayerActivity : Activity() {
                     if (activityDestroyed) return
                     if (state == Player.STATE_READY) {
                         playerReady = true
+                        updateNextEpisodeButton()
                         markStep("Player pronto: STATE_READY")
                         loading.visibility = View.GONE
                         setControlsVisible(true)
@@ -450,6 +518,7 @@ class PlayerActivity : Activity() {
             exo.prepare()
             exo.playWhenReady = true
             markStep("reprodução solicitada")
+            handler.removeCallbacks(progressRunnable)
             handler.post(progressRunnable)
         } catch (error: Throwable) {
             Log.e(TAG, "Falha ao criar Media3/HlsMediaSource", error)
@@ -706,9 +775,10 @@ class PlayerActivity : Activity() {
         overlay.children().forEach { child ->
             // O loader possui ciclo próprio e não pode ser escondido quando os
             // controles são fechados antes do primeiro STATE_READY.
-            if (child !== loading) {
+            if (child !== loading && child !== topBar) {
                 child.visibility = if (visible) View.VISIBLE else View.INVISIBLE
             }
+            if (child === topBar) child.visibility = View.VISIBLE
         }
         if (visible) scheduleHide()
     }
