@@ -775,10 +775,16 @@ class PlayerActivity : Activity() {
         overlay.children().forEach { child ->
             // O loader possui ciclo próprio e não pode ser escondido quando os
             // controles são fechados antes do primeiro STATE_READY.
-            if (child !== loading && child !== topBar) {
-                child.visibility = if (visible) View.VISIBLE else View.INVISIBLE
+            when {
+                child === loading -> Unit
+                child === topBar -> {
+                    // Durante o loading o Voltar permanece acessível. Depois que
+                    // o player está pronto, a barra segue a mesma regra dos demais
+                    // controles e desaparece ao tocar em uma área vazia.
+                    child.visibility = if (!playerReady || visible) View.VISIBLE else View.INVISIBLE
+                }
+                else -> child.visibility = if (visible) View.VISIBLE else View.INVISIBLE
             }
-            if (child === topBar) child.visibility = View.VISIBLE
         }
         if (visible) scheduleHide()
     }
