@@ -164,6 +164,18 @@ class MainActivity : Activity() {
         }
 
         @JavascriptInterface
+        fun openSources() {
+            activity.runOnUiThread {
+                try {
+                    activity.startActivity(Intent(activity, com.tedflix.app.sources.SourceSettingsActivity::class.java))
+                } catch (error: Throwable) {
+                    Log.e("TedflixMain", "Falha ao abrir as fontes", error)
+                    Toast.makeText(activity, "Não foi possível abrir as fontes.", Toast.LENGTH_LONG).show()
+                }
+            }
+        }
+
+        @JavascriptInterface
         fun setBuffer(buffer: String?) {
             activity.getSharedPreferences(PlayerActivity.PREFS, Context.MODE_PRIVATE)
                 .edit()

@@ -65,6 +65,22 @@ export default async function paginaConfiguracoes(raiz) {
     botao,
   ]);
 
+  const blocoFontes = el("section", { class: "cfg-bloco" }, [
+    el("h2", {}, "Fontes de conteúdo"),
+    el("p", { class: "sub" }, "Escolha o servidor principal, uma fonte alternativa ou consulte todas as fontes cadastradas."),
+    el("button", {
+      class: "btn ghost",
+      type: "button",
+      onclick: () => {
+        if (window.AndroidPlayer && typeof window.AndroidPlayer.openSources === "function") {
+          window.AndroidPlayer.openSources();
+        } else {
+          alert("O gerenciamento de fontes está disponível no aplicativo Android.");
+        }
+      },
+    }, "Gerenciar fontes"),
+  ]);
+
   page.append(
     el("h1", { class: "cfg-titulo" }, "Configurações"),
     blocoRede,
@@ -78,6 +94,7 @@ export default async function paginaConfiguracoes(raiz) {
         window.AndroidPlayer?.setBuffer?.(v);
       },
     ),
+    blocoFontes,
   );
 
   raiz.append(page);

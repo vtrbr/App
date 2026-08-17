@@ -20,6 +20,10 @@
             android:screenOrientation="landscape"
             android:theme="@style/Theme.Tedflix.Player" />
         <activity
+            android:name=".sources.SourceSettingsActivity"
+            android:exported="false"
+            android:theme="@style/Theme.Tedflix" />
+        <activity
             android:name=".MainActivity"
             android:configChanges="orientation|screenSize|keyboardHidden|smallestScreenSize|screenLayout"
             android:exported="true">
