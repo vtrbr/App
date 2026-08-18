@@ -16,6 +16,11 @@ export default async function paginaInicio(raiz) {
   page.append(topo);
   raiz.append(page);
 
+  const continuar = carregarContinuarAssistindo();
+  if (continuar.length) {
+    page.append(fileira({ titulo: "Continuar Assistindo", carregar: async () => continuar, limite: 20 }));
+  }
+
   page.append(
     fileira({ titulo: "Últimos filmes", carregar: getUltimosFilmes }),
     fileira({ titulo: "Lançamentos", verTudo: "#/filmes", carregar: getLancamentos }),
@@ -43,4 +48,23 @@ export default async function paginaInicio(raiz) {
   }
 
   return page;
+}
+
+function carregarContinuarAssistindo() {
+  try {
+    if (!window.AndroidPlayer?.getContinueWatching) return [];
+    const itens = JSON.parse(window.AndroidPlayer.getContinueWatching() || "[]");
+    return Array.isArray(itens)
+      ? itens
+          .filter((item) => item && item.categoria && item.slug)
+          .map((item) => ({
+            ...item,
+            tipo: item.tipo || "Filme",
+            link_assistir: `/titulo/${item.tipo === "serie" ? "serie" : "filme"}/${item.categoria}/${item.slug}`,
+            progresso: Number(item.percent || 0),
+          }))
+      : [];
+  } catch (e) {
+    return [];
+  }
 }

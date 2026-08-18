@@ -81,6 +81,7 @@ class PlayerActivity : Activity() {
     @Volatile private var diagnosticUrl = ""
     private var validationThread: Thread? = null
     private var lastDuration = 0L
+    private var positionRestored = false
     private val handler = Handler(Looper.getMainLooper())
     private val hideRunnable = Runnable { setControlsVisible(false) }
     private data class NextEpisode(val categoria: String, val slug: String, val titulo: String)
@@ -465,6 +466,7 @@ class PlayerActivity : Activity() {
     ) {
         try {
             playerReady = false
+            positionRestored = false
             loading.visibility = View.VISIBLE
             setControlsVisible(false)
             markStep("criando MediaItem")
@@ -493,6 +495,7 @@ class PlayerActivity : Activity() {
                     if (activityDestroyed) return
                     if (state == Player.STATE_READY) {
                         playerReady = true
+                        restoreSavedPosition(exo)
                         updateNextEpisodeButton()
                         markStep("Player pronto: STATE_READY")
                         loading.visibility = View.GONE
@@ -682,6 +685,42 @@ class PlayerActivity : Activity() {
         dialog.setCanceledOnTouchOutside(true)
         dialog.setOnCancelListener { setControlsVisible(false) }
         dialog.show()
+    }
+
+    private fun restoreSavedPosition(exo: ExoPlayer) {
+        if (positionRestored) return
+        positionRestored = true
+        val saved = ContinueWatchingStore.read(this).firstOrNull {
+            it.categoria == currentCategoria && it.slug == currentSlug
+        } ?: return
+        val duration = exo.duration.takeIf { it > 0L } ?: saved.durationMs
+        val target = saved.positionMs.coerceIn(0L, (duration - 1_000L).coerceAtLeast(0L))
+        if (target >= 10_000L) {
+            exo.seekTo(target)
+            toast("Continuando de ${formatTime(target)}")
+            Log.d(TAG, "Progresso restaurado: ${target}ms para ${saved.key}")
+        }
+    }
+
+    private fun savePlaybackProgress() {
+        val exo = player ?: return
+        if (!playerReady) return
+        val duration = exo.duration
+        val position = exo.currentPosition
+        if (duration <= 0L || position <= 0L) return
+        ContinueWatchingStore.save(this, currentCategoria, currentSlug, currentTitle, position, duration)
+        Log.d(TAG, "Progresso salvo: ${position}ms/${duration}ms para $currentCategoria:$currentSlug")
+    }
+
+    override fun onPause() {
+        savePlaybackProgress()
+        super.onPause()
+    }
+
+    override fun onStop() {
+        savePlaybackProgress()
+        handler.removeCallbacks(progressRunnable)
+        super.onStop()
     }
 
     private fun showError(message: String) {

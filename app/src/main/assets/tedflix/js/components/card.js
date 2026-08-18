@@ -33,6 +33,12 @@ export function cardTitulo(item, { size = "sm", eager = false } = {}) {
     thumb.append(img);
   }
   if (nota) thumb.append(el("span", { class: "badge", html: `${ESTRELA}${nota}` }));
+  if (Number.isFinite(Number(item.progresso)) && Number(item.progresso) > 0) {
+    const percentual = Math.max(0, Math.min(100, Number(item.progresso)));
+    thumb.append(el("span", { class: "progress-track", aria: "progressbar", "aria-valuenow": String(percentual), "aria-valuemin": "0", "aria-valuemax": "100" }, [
+      el("span", { class: "progress-value", style: `width:${percentual}%` }),
+    ]));
+  }
 
   return el("a", { class: "card", href: rotaDetalhe(item), "aria-label": item.titulo }, [
     thumb,

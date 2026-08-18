@@ -203,6 +203,16 @@ class MainActivity : Activity() {
         }
 
         @JavascriptInterface
+        fun getContinueWatching(): String {
+            return try {
+                ContinueWatchingStore.toJson(activity)
+            } catch (error: Throwable) {
+                Log.w("TedflixMain", "Falha ao ler progresso local", error)
+                "[]"
+            }
+        }
+
+        @JavascriptInterface
         fun openSources() {
             activity.runOnUiThread {
                 try {
