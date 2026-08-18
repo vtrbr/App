@@ -20,17 +20,26 @@ import android.widget.ScrollView
 import android.widget.TextView
 import android.widget.Toast
 import androidx.media3.common.util.UnstableApi
+import com.tedflix.app.auth.AccountActivity
+import com.tedflix.app.auth.AuthActivity
+import com.tedflix.app.auth.AuthSession
 
 @UnstableApi
 class MainActivity : Activity() {
     private lateinit var webView: WebView
     private var playerWasOpened = false
+    @Volatile private var authRedirectInProgress = false
 
     @SuppressLint("SetJavaScriptEnabled")
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         window.statusBarColor = Color.rgb(5, 6, 9)
         window.navigationBarColor = Color.rgb(5, 6, 9)
+        AuthSession.init(applicationContext)
+        if (!AuthSession.hasToken()) {
+            openLogin()
+            return
+        }
 
         val previousCrash = TedflixApplication.consumeLastCrash(this)
         if (!previousCrash.isNullOrBlank()) {
@@ -57,11 +66,37 @@ class MainActivity : Activity() {
                 override fun shouldOverrideUrlLoading(view: WebView, request: WebResourceRequest): Boolean {
                     return request.url.toString().startsWith("file:///android_asset/").not()
                 }
+
+                override fun shouldInterceptRequest(view: WebView, request: WebResourceRequest): android.webkit.WebResourceResponse? {
+                    val response = AuthSession.proxyMovieRequest(request)
+                    if (response != null && response.statusCode in 401..403) {
+                        handleSessionExpired()
+                    }
+                    return if (response != null) AuthSession.toWebResourceResponse(response)
+                    else super.shouldInterceptRequest(view, request)
+                }
             }
             addJavascriptInterface(AndroidPlayerBridge(this@MainActivity), "AndroidPlayer")
             loadUrl("file:///android_asset/tedflix/index.html")
         }
         setContentView(webView)
+    }
+
+    private fun handleSessionExpired() {
+        if (authRedirectInProgress) return
+        authRedirectInProgress = true
+        runOnUiThread {
+            AuthSession.clear()
+            Toast.makeText(this, "Sua sessão expirou. Entre novamente.", Toast.LENGTH_LONG).show()
+            openLogin()
+        }
+    }
+
+    private fun openLogin() {
+        startActivity(Intent(this, AuthActivity::class.java).apply {
+            addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_NEW_TASK)
+        })
+        finish()
     }
 
     private fun showCrashRecovery(report: String) {
@@ -142,6 +177,10 @@ class MainActivity : Activity() {
             val slugValue = slug.orEmpty().trim()
             val tituloValue = titulo.orEmpty().trim()
             activity.runOnUiThread {
+                if (!AuthSession.hasToken()) {
+                    activity.startActivity(Intent(activity, AuthActivity::class.java))
+                    return@runOnUiThread
+                }
                 if (categoriaValue.isBlank() || slugValue.isBlank()) {
                     Toast.makeText(activity, "Título inválido.", Toast.LENGTH_LONG).show()
                     return@runOnUiThread
@@ -171,6 +210,18 @@ class MainActivity : Activity() {
                 } catch (error: Throwable) {
                     Log.e("TedflixMain", "Falha ao abrir as fontes", error)
                     Toast.makeText(activity, "Não foi possível abrir as fontes.", Toast.LENGTH_LONG).show()
+                }
+            }
+        }
+
+        @JavascriptInterface
+        fun openAccount() {
+            activity.runOnUiThread {
+                try {
+                    activity.startActivity(Intent(activity, AccountActivity::class.java))
+                } catch (error: Throwable) {
+                    Log.e("TedflixMain", "Falha ao abrir a conta", error)
+                    Toast.makeText(activity, "Não foi possível abrir a conta.", Toast.LENGTH_LONG).show()
                 }
             }
         }

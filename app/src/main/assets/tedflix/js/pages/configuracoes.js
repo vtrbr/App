@@ -65,6 +65,22 @@ export default async function paginaConfiguracoes(raiz) {
     botao,
   ]);
 
+  const blocoConta = el("section", { class: "cfg-bloco" }, [
+    el("h2", {}, "Sua conta"),
+    el("p", { class: "sub" }, "Gerencie seu perfil, validade, senha e notificações."),
+    el("button", {
+      class: "btn ghost",
+      type: "button",
+      onclick: () => {
+        if (window.AndroidPlayer && typeof window.AndroidPlayer.openAccount === "function") {
+          window.AndroidPlayer.openAccount();
+        } else {
+          alert("A configuração da conta está disponível no aplicativo Android.");
+        }
+      },
+    }, "Abrir minha conta"),
+  ]);
+
   const blocoFontes = el("section", { class: "cfg-bloco" }, [
     el("h2", {}, "Fontes de conteúdo"),
     el("p", { class: "sub" }, "Escolha o servidor principal, uma fonte alternativa ou consulte todas as fontes cadastradas."),
@@ -83,6 +99,7 @@ export default async function paginaConfiguracoes(raiz) {
 
   page.append(
     el("h1", { class: "cfg-titulo" }, "Configurações"),
+    blocoConta,
     blocoRede,
     grupo(
       "Buffer",

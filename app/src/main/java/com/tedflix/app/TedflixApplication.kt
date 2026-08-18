@@ -3,6 +3,7 @@ package com.tedflix.app
 import android.app.Application
 import android.content.Context
 import android.util.Log
+import com.tedflix.app.auth.AuthSession
 
 /**
  * Captura exceções não tratadas apenas para diagnóstico local.
@@ -11,6 +12,7 @@ import android.util.Log
 class TedflixApplication : Application() {
     override fun onCreate() {
         super.onCreate()
+        AuthSession.init(this)
         val previousHandler = Thread.getDefaultUncaughtExceptionHandler()
         Thread.setDefaultUncaughtExceptionHandler { thread, error ->
             try {

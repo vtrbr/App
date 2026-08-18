@@ -34,6 +34,7 @@ import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.hls.HlsMediaSource
 import androidx.media3.ui.AspectRatioFrameLayout
 import androidx.media3.ui.PlayerView
+import com.tedflix.app.auth.AuthSession
 import java.io.InputStream
 import java.net.HttpURLConnection
 import java.net.URL
@@ -49,7 +50,7 @@ class PlayerActivity : Activity() {
         const val EXTRA_NEXT_EPISODES = "next_episodes"
         const val PREFS = "tedflix_preferences"
         const val BUFFER_KEY = "buffer"
-        private const val API_BASE = "https://ted.cryptitys.site/api"
+        private const val API_BASE = "https://tedtv.onrender.com/api"
         private const val STREAM_ORIGIN = "https://novelasflix.video"
         private const val STREAM_REFERER = "https://novelasflix.video/"
         private const val STREAM_USER_AGENT =
@@ -388,6 +389,13 @@ class PlayerActivity : Activity() {
             val categoria = currentCategoria
             val slug = currentSlug
             val titulo = currentTitle
+            if (!AuthSession.hasToken()) {
+                showDiagnosticScreen(
+                    "Sessão ausente",
+                    IllegalStateException("Faça login para reproduzir este conteúdo."),
+                )
+                return
+            }
             if (categoria.isBlank() || slug.isBlank()) {
                 showDiagnosticScreen(
                     "Intent/extras inválidos",
@@ -529,14 +537,17 @@ class PlayerActivity : Activity() {
         }
     }
 
-    private fun streamRequestProperties() = mapOf(
-        "Origin" to STREAM_ORIGIN,
-        "Referer" to STREAM_REFERER,
-        "Accept" to "*/*",
-        "Accept-Language" to "pt-BR,pt;q=0.9",
-        "Cache-Control" to "no-cache",
-        "Pragma" to "no-cache",
-    )
+    private fun streamRequestProperties(): Map<String, String> = buildMap {
+        put("Origin", STREAM_ORIGIN)
+        put("Referer", STREAM_REFERER)
+        put("Accept", "*/*")
+        put("Accept-Language", "pt-BR,pt;q=0.9")
+        put("Cache-Control", "no-cache")
+        put("Pragma", "no-cache")
+        AuthSession.token()?.takeIf { it.isNotBlank() }?.let { token ->
+            put("Authorization", "Bearer $token")
+        }
+    }
 
     private fun readPreview(input: InputStream?): String {
         if (input == null) return "(resposta sem corpo)"
