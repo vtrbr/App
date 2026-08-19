@@ -5,6 +5,7 @@ import { cardTitulo } from "../components/card.js";
 
 export default async function paginaDetalhe(raiz, { tipo, categoria, slug }) {
   const page = el("div", { class: "page" });
+  const progresso = lerProgressoLocal();
   raiz.append(page);
   page.append(el("div", { class: "center" }, [el("div", { class: "spinner" })]));
 
@@ -142,6 +143,9 @@ async function blocoTemporadas(categoria, slug) {
             el("div", { style: "min-width:0" }, [
               el("p", { class: "t" }, `${ep.numero ? `${ep.numero}. ` : ""}${ep.titulo || "Episódio"}`),
               el("p", { class: "d" }, ep.duracao || ""),
+              info && progresso.get(`${info.categoria}:${info.slug}`) ? el("div", { class: "ep-progress" }, [
+                el("span", { style: `width:${progresso.get(`${info.categoria}:${info.slug}`)}%` }),
+              ]) : null,
             ]),
           ]),
         );
@@ -165,4 +169,15 @@ async function blocoTemporadas(categoria, slug) {
 
   carregar(temporadas[0].numero);
   return bloco;
+}
+
+function lerProgressoLocal() {
+  const mapa = new Map();
+  try {
+    const itens = JSON.parse(window.AndroidPlayer?.getContinueWatching?.() || "[]");
+    (Array.isArray(itens) ? itens : []).forEach((item) => {
+      if (item?.categoria && item?.slug) mapa.set(`${item.categoria}:${item.slug}`, Number(item.percent || 0));
+    });
+  } catch (_) {}
+  return mapa;
 }

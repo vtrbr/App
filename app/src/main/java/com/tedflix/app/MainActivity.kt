@@ -15,7 +15,9 @@ import android.webkit.WebResourceRequest
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import android.widget.Button
+import android.widget.ImageView
 import android.widget.LinearLayout
+import android.widget.ProgressBar
 import android.widget.ScrollView
 import android.widget.TextView
 import android.widget.Toast
@@ -23,6 +25,8 @@ import androidx.media3.common.util.UnstableApi
 import com.tedflix.app.auth.AccountActivity
 import com.tedflix.app.auth.AuthActivity
 import com.tedflix.app.auth.AuthSession
+import com.tedflix.app.NotificationHelper
+import com.tedflix.app.requestNotificationPermissionIfNeeded
 
 @UnstableApi
 class MainActivity : Activity() {
@@ -41,12 +45,68 @@ class MainActivity : Activity() {
             return
         }
 
+        NotificationHelper.createChannel(this)
+        requestNotificationPermissionIfNeeded(this)
+        publishUnreadNotifications()
         val previousCrash = TedflixApplication.consumeLastCrash(this)
         if (!previousCrash.isNullOrBlank()) {
             showCrashRecovery(previousCrash)
             return
         }
-        setupWebView()
+        showProfileChooser()
+    }
+
+    private fun publishUnreadNotifications() {
+        Thread {
+            val result = AuthSession.notifications()
+            if (!result.ok) return@Thread
+            result.value.orEmpty().filterNot { it.read }.forEachIndexed { index, item ->
+                runOnUiThread { NotificationHelper.show(this, 5000 + index, item.title, item.body) }
+            }
+        }.start()
+    }
+
+    private fun showProfileChooser() {
+        val name = AuthSession.cachedUser()?.username?.ifBlank { "Meu perfil" } ?: "Meu perfil"
+        val root = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            gravity = Gravity.CENTER
+            setPadding(dp(24), dp(24), dp(24), dp(24))
+            setBackgroundColor(Color.rgb(18, 18, 18))
+        }
+        root.addView(TextView(this).apply {
+            text = "TEDFLIX"
+            textSize = 14f
+            setTextColor(Color.rgb(229, 9, 20))
+            typeface = android.graphics.Typeface.DEFAULT_BOLD
+            gravity = Gravity.CENTER
+        }, LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = dp(38) })
+        root.addView(TextView(this).apply {
+            text = "Quem está assistindo?"
+            textSize = 26f
+            setTextColor(Color.WHITE)
+            gravity = Gravity.CENTER
+        }, LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = dp(26) })
+        val avatar = ImageView(this).apply {
+            setImageResource(com.tedflix.app.R.drawable.tedflix_auth_banner)
+            scaleType = ImageView.ScaleType.CENTER_CROP
+            contentDescription = name
+            setOnClickListener {
+                root.removeAllViews()
+                root.addView(ProgressBar(this@MainActivity).apply {
+                    indeterminateTintList = android.content.res.ColorStateList.valueOf(Color.rgb(229, 9, 20))
+                }, LinearLayout.LayoutParams(dp(52), dp(52)))
+                root.postDelayed({ setupWebView() }, 220L)
+            }
+        }
+        root.addView(avatar, LinearLayout.LayoutParams(dp(132), dp(132)).apply { bottomMargin = dp(12) })
+        root.addView(TextView(this).apply {
+            text = name
+            textSize = 15f
+            setTextColor(Color.LTGRAY)
+            gravity = Gravity.CENTER
+        }, LinearLayout.LayoutParams(-1, -2))
+        setContentView(root)
     }
 
     @SuppressLint("SetJavaScriptEnabled")
@@ -198,6 +258,23 @@ class MainActivity : Activity() {
                     Log.e("TedflixMain", "Falha ao abrir o PlayerActivity", error)
                     activity.playerWasOpened = false
                     Toast.makeText(activity, "Não foi possível abrir o player.", Toast.LENGTH_LONG).show()
+                }
+            }
+        }
+
+        @JavascriptInterface
+        fun getProfileName(): String = AuthSession.cachedUser()?.username?.ifBlank { "Meu perfil" } ?: "Meu perfil"
+
+        @JavascriptInterface
+        fun openNotifications() {
+            activity.runOnUiThread {
+                try {
+                    activity.startActivity(Intent(activity, AccountActivity::class.java).apply {
+                        putExtra("open_notifications", true)
+                    })
+                } catch (error: Throwable) {
+                    Log.e("TedflixMain", "Falha ao abrir notificações", error)
+                    Toast.makeText(activity, "Não foi possível abrir as notificações.", Toast.LENGTH_LONG).show()
                 }
             }
         }

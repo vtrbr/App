@@ -17,6 +17,7 @@ import android.widget.ScrollView
 import android.widget.TextView
 import androidx.media3.common.util.UnstableApi
 import com.tedflix.app.R
+import com.tedflix.app.NotificationHelper
 import java.util.Locale
 
 @UnstableApi
@@ -145,7 +146,10 @@ class AccountActivity : Activity() {
                 statusText.text = buildStatus(user, statusJson, profile.message)
                 notificationBox.removeAllViews()
                 if (notifications.ok && !notifications.value.isNullOrEmpty()) {
-                    notifications.value.orEmpty().forEach { addNotification(it) }
+                    notifications.value.orEmpty().forEachIndexed { index, item ->
+                        addNotification(item)
+                        if (!item.read) NotificationHelper.show(this, 7000 + index, item.title, item.body)
+                    }
                 } else {
                     notificationBox.addView(TextView(this).apply {
                         text = notifications.message.ifBlank { "Nenhuma notificação." }

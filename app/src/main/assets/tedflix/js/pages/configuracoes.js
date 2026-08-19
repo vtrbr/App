@@ -65,6 +65,15 @@ export default async function paginaConfiguracoes(raiz) {
     botao,
   ]);
 
+  const nomePerfil = window.AndroidPlayer?.getProfileName?.() || "Meu perfil";
+  const blocoPerfil = el("section", { class: "cfg-bloco cfg-perfil" }, [
+    el("div", { class: "cfg-avatar" }, "T"),
+    el("div", {}, [
+      el("h2", {}, nomePerfil),
+      el("p", { class: "sub" }, "Perfil único do Tedflix"),
+    ]),
+  ]);
+
   const blocoConta = el("section", { class: "cfg-bloco" }, [
     el("h2", {}, "Sua conta"),
     el("p", { class: "sub" }, "Gerencie seu perfil, validade, senha e notificações."),
@@ -99,6 +108,7 @@ export default async function paginaConfiguracoes(raiz) {
 
   page.append(
     el("h1", { class: "cfg-titulo" }, "Configurações"),
+    blocoPerfil,
     blocoConta,
     blocoRede,
     grupo(

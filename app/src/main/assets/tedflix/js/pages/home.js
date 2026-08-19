@@ -7,6 +7,7 @@ import {
   getLancamentos,
   getSeries,
   getGenero,
+  getTitulo,
 } from "../api.js";
 import { CATEGORIAS } from "../config.js";
 
@@ -16,7 +17,7 @@ export default async function paginaInicio(raiz) {
   page.append(topo);
   raiz.append(page);
 
-  const continuar = carregarContinuarAssistindo();
+  const continuar = await carregarContinuarAssistindo();
   if (continuar.length) {
     page.append(fileira({ titulo: "Continuar Assistindo", carregar: async () => continuar, limite: 20 }));
   }
@@ -50,20 +51,27 @@ export default async function paginaInicio(raiz) {
   return page;
 }
 
-function carregarContinuarAssistindo() {
+async function carregarContinuarAssistindo() {
   try {
     if (!window.AndroidPlayer?.getContinueWatching) return [];
     const itens = JSON.parse(window.AndroidPlayer.getContinueWatching() || "[]");
-    return Array.isArray(itens)
-      ? itens
-          .filter((item) => item && item.categoria && item.slug)
-          .map((item) => ({
-            ...item,
-            tipo: item.tipo || "Filme",
-            link_assistir: `/titulo/${item.tipo === "serie" ? "serie" : "filme"}/${item.categoria}/${item.slug}`,
-            progresso: Number(item.percent || 0),
-          }))
-      : [];
+    if (!Array.isArray(itens)) return [];
+    return (await Promise.all(itens
+      .filter((item) => item && item.categoria && item.slug)
+      .map(async (item) => {
+        let detalhe = null;
+        try { detalhe = await getTitulo(item.categoria, item.slug); } catch (_) {}
+        const tipo = item.tipo || detalhe?.tipo || "Filme";
+        return {
+          ...detalhe,
+          ...item,
+          tipo,
+          titulo: item.titulo || detalhe?.titulo || "Tedflix",
+          imagem: item.imagem || detalhe?.imagem || "",
+          link_assistir: `/titulo/${tipo.toLowerCase() === "serie" ? "serie" : "filme"}/${item.categoria}/${item.slug}`,
+          progresso: Number(item.percent || 0),
+        };
+      }))).filter(Boolean);
   } catch (e) {
     return [];
   }
