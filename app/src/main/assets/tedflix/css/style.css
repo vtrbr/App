@@ -91,9 +91,11 @@ img { display: block; max-width: 100%; }
 .rail {
   display: flex; gap: 12px; overflow-x: auto; padding-inline: 16px;
   scroll-snap-type: x proximity; -webkit-overflow-scrolling: touch;
+  touch-action: pan-x pinch-zoom; cursor: grab; user-select: none;
   scrollbar-width: none;
 }
 .rail::-webkit-scrollbar { display: none; }
+.rail:active { cursor: grabbing; }
 .rail > * { scroll-snap-align: start; flex: 0 0 118px; width: 118px; min-width: 0; }
 @media (min-width: 700px) { .rail > * { flex-basis: 150px; width: 150px; } }
 

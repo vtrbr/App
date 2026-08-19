@@ -25,6 +25,7 @@ import androidx.media3.common.util.UnstableApi
 import com.tedflix.app.auth.AccountActivity
 import com.tedflix.app.auth.AuthActivity
 import com.tedflix.app.auth.AuthSession
+import com.tedflix.app.auth.NotificationActivity
 import com.tedflix.app.NotificationHelper
 import com.tedflix.app.requestNotificationPermissionIfNeeded
 
@@ -269,9 +270,7 @@ class MainActivity : Activity() {
         fun openNotifications() {
             activity.runOnUiThread {
                 try {
-                    activity.startActivity(Intent(activity, AccountActivity::class.java).apply {
-                        putExtra("open_notifications", true)
-                    })
+                    activity.startActivity(Intent(activity, NotificationActivity::class.java))
                 } catch (error: Throwable) {
                     Log.e("TedflixMain", "Falha ao abrir notificações", error)
                     Toast.makeText(activity, "Não foi possível abrir as notificações.", Toast.LENGTH_LONG).show()

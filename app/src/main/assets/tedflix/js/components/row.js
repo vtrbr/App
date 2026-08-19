@@ -9,6 +9,32 @@ import { prefetchImagens } from "../img.js";
  */
 export function fileira({ titulo, verTudo, carregar, limite = 20 }) {
   const rail = el("div", { class: "rail" });
+  let pressionado = false;
+  let arrastando = false;
+  let inicioX = 0;
+  let scrollInicial = 0;
+  rail.addEventListener("pointerdown", (evento) => {
+    pressionado = true;
+    arrastando = false;
+    inicioX = evento.clientX;
+    scrollInicial = rail.scrollLeft;
+    rail.setPointerCapture?.(evento.pointerId);
+  });
+  rail.addEventListener("pointermove", (evento) => {
+    if (!pressionado) return;
+    const delta = evento.clientX - inicioX;
+    if (Math.abs(delta) > 6) arrastando = true;
+    if (arrastando) {
+      evento.preventDefault();
+      rail.scrollLeft = scrollInicial - delta;
+    }
+  });
+  const finalizarArraste = () => { pressionado = false; setTimeout(() => { arrastando = false; }, 0); };
+  rail.addEventListener("pointerup", finalizarArraste);
+  rail.addEventListener("pointercancel", finalizarArraste);
+  rail.addEventListener("click", (evento) => {
+    if (arrastando) { evento.preventDefault(); evento.stopPropagation(); }
+  }, true);
   for (let i = 0; i < 6; i++) rail.append(skeletonCard());
 
   const secao = el("section", { class: "section" }, [
