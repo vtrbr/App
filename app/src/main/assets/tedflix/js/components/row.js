@@ -3,61 +3,12 @@ import { cardTitulo, skeletonCard } from "./card.js";
 import { prefetchImagens } from "../img.js";
 
 /**
- * Fileira horizontal preguiçosa: busca os dados quando chega perto da
- * viewport, mostra os primeiros cards imediatamente e completa o resto
- * num segundo quadro — assim a rolagem nunca engasga.
+ * Fileira horizontal preguiçosa. A rolagem fica a cargo do overflow-x nativo
+ * do WebView, que é mais confiável no toque do Android do que capturar
+ * ponteiros manualmente.
  */
 export function fileira({ titulo, verTudo, carregar, limite = 20 }) {
-  const rail = el("div", { class: "rail" });
-  let pressionado = false;
-  let arrastando = false;
-  let inicioX = 0;
-  let scrollInicial = 0;
-  let ponteiroAtivo = null;
-  let suprimirCliqueAte = 0;
-
-  const finalizarArraste = (evento) => {
-    if (ponteiroAtivo !== null && evento?.pointerId != null && evento.pointerId !== ponteiroAtivo) return;
-    if (arrastando) suprimirCliqueAte = Date.now() + 420;
-    pressionado = false;
-    ponteiroAtivo = null;
-    rail.classList.remove("arrastando");
-  };
-
-  rail.addEventListener("pointerdown", (evento) => {
-    if (evento.pointerType === "mouse" && evento.button !== 0) return;
-    pressionado = true;
-    arrastando = false;
-    ponteiroAtivo = evento.pointerId;
-    inicioX = evento.clientX;
-    scrollInicial = rail.scrollLeft;
-    try { rail.setPointerCapture(evento.pointerId); } catch (_) {}
-  });
-
-  rail.addEventListener("pointermove", (evento) => {
-    if (!pressionado || evento.pointerId !== ponteiroAtivo) return;
-    const delta = evento.clientX - inicioX;
-    if (!arrastando && Math.abs(delta) > 8) {
-      arrastando = true;
-      rail.classList.add("arrastando");
-    }
-    if (arrastando) {
-      evento.preventDefault();
-      evento.stopPropagation();
-      rail.scrollLeft = scrollInicial - delta;
-    }
-  }, { passive: false });
-
-  rail.addEventListener("pointerup", finalizarArraste);
-  rail.addEventListener("pointercancel", finalizarArraste);
-  rail.addEventListener("lostpointercapture", () => finalizarArraste());
-  rail.addEventListener("click", (evento) => {
-    if (Date.now() < suprimirCliqueAte) {
-      evento.preventDefault();
-      evento.stopImmediatePropagation();
-      suprimirCliqueAte = 0;
-    }
-  }, true);
+  const rail = el("div", { class: "rail", role: "region", "aria-label": titulo });
   for (let i = 0; i < 6; i++) rail.append(skeletonCard());
 
   const secao = el("section", { class: "section" }, [
@@ -83,7 +34,6 @@ export function fileira({ titulo, verTudo, carregar, limite = 20 }) {
         lista.slice(0, 6).forEach((item, i) => primeiros.append(cardTitulo(item, { eager: i < 3 })));
         rail.append(primeiros);
 
-        // resto fora do caminho crítico
         const agenda = window.requestIdleCallback || ((f) => setTimeout(f, 60));
         agenda(() => {
           const frag = document.createDocumentFragment();

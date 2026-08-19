@@ -4,6 +4,7 @@ import android.annotation.SuppressLint
 import android.app.Activity
 import android.content.Context
 import android.content.Intent
+import android.net.Uri
 import android.graphics.Color
 import android.os.Bundle
 import android.util.Log
@@ -22,7 +23,6 @@ import android.widget.ScrollView
 import android.widget.TextView
 import android.widget.Toast
 import androidx.media3.common.util.UnstableApi
-import com.tedflix.app.auth.AccountActivity
 import com.tedflix.app.auth.AuthActivity
 import com.tedflix.app.auth.AuthSession
 import com.tedflix.app.auth.FavoritesActivity
@@ -32,6 +32,13 @@ import com.tedflix.app.requestNotificationPermissionIfNeeded
 
 @UnstableApi
 class MainActivity : Activity() {
+    companion object {
+        const val EXTRA_OPEN_FAVORITE_TITLE = "open_favorite_title"
+        const val EXTRA_OPEN_FAVORITE_CATEGORY = "open_favorite_category"
+        const val EXTRA_OPEN_FAVORITE_SLUG = "open_favorite_slug"
+        const val EXTRA_OPEN_FAVORITE_TYPE = "open_favorite_type"
+    }
+
     private lateinit var webView: WebView
     private var playerWasOpened = false
     @Volatile private var authRedirectInProgress = false
@@ -193,7 +200,16 @@ class MainActivity : Activity() {
                 }
             }
             addJavascriptInterface(AndroidPlayerBridge(this@MainActivity), "AndroidPlayer")
-            loadUrl("file:///android_asset/tedflix/index.html")
+            val favoriteTitle = intent.getStringExtra(EXTRA_OPEN_FAVORITE_TITLE).orEmpty()
+            val favoriteCategory = intent.getStringExtra(EXTRA_OPEN_FAVORITE_CATEGORY).orEmpty()
+            val favoriteSlug = intent.getStringExtra(EXTRA_OPEN_FAVORITE_SLUG).orEmpty()
+            val favoriteType = intent.getStringExtra(EXTRA_OPEN_FAVORITE_TYPE).orEmpty().lowercase().let { if (it.contains("séri") || it.contains("serie")) "serie" else "filme" }
+            val route = when {
+                favoriteCategory.isNotBlank() && favoriteSlug.isNotBlank() -> "#/titulo/$favoriteType/${Uri.encode(favoriteCategory)}/${Uri.encode(favoriteSlug)}"
+                favoriteTitle.isNotBlank() -> "#/favorito?titulo=${Uri.encode(favoriteTitle)}"
+                else -> ""
+            }
+            loadUrl("file:///android_asset/tedflix/index.html$route")
         }
         setContentView(webView)
     }
@@ -437,12 +453,56 @@ class MainActivity : Activity() {
         @JavascriptInterface
         fun openAccount() {
             activity.runOnUiThread {
-                try {
-                    activity.startActivity(Intent(activity, AccountActivity::class.java))
-                } catch (error: Throwable) {
-                    Log.e("TedflixMain", "Falha ao abrir a conta", error)
-                    Toast.makeText(activity, "Não foi possível abrir a conta.", Toast.LENGTH_LONG).show()
-                }
+                if (!activity::webView.isInitialized) return@runOnUiThread
+                activity.webView.evaluateJavascript("location.hash = '#/config';", null)
+            }
+        }
+
+        @JavascriptInterface
+        fun getAccountStatus(): String {
+            return try {
+                val status = AuthSession.status()
+                if (!status.ok) "{\"success\":false,\"error\":${org.json.JSONObject.quote(status.message)}}"
+                else org.json.JSONObject().put("success", true).put("status", status.value ?: org.json.JSONObject()).toString()
+            } catch (error: Throwable) {
+                "{\"success\":false,\"error\":\"Não foi possível carregar o status da conta.\"}"
+            }
+        }
+
+        @JavascriptInterface
+        fun updateProfileName(username: String?): String {
+            return try {
+                val result = AuthSession.updateUsername(username.orEmpty())
+                org.json.JSONObject().put("success", result.ok).apply {
+                    if (result.message.isNotBlank()) put("error", result.message)
+                }.toString()
+            } catch (_: Throwable) {
+                "{\"success\":false,\"error\":\"Não foi possível salvar o nome.\"}"
+            }
+        }
+
+        @JavascriptInterface
+        fun changeProfilePassword(currentPassword: String?, newPassword: String?): String {
+            return try {
+                val result = AuthSession.changePassword(currentPassword.orEmpty(), newPassword.orEmpty())
+                org.json.JSONObject().put("success", result.ok).apply {
+                    if (result.message.isNotBlank()) put("error", result.message)
+                }.toString()
+            } catch (_: Throwable) {
+                "{\"success\":false,\"error\":\"Não foi possível alterar a senha.\"}"
+            }
+        }
+
+        @JavascriptInterface
+        fun logoutFromSettings(): String {
+            return try {
+                val result = AuthSession.logout()
+                if (result.ok) activity.runOnUiThread { activity.openLogin() }
+                org.json.JSONObject().put("success", result.ok).apply {
+                    if (result.message.isNotBlank()) put("error", result.message)
+                }.toString()
+            } catch (_: Throwable) {
+                "{\"success\":false,\"error\":\"Não foi possível sair da conta.\"}"
             }
         }
 
