@@ -98,7 +98,16 @@ class PlayerActivity : Activity() {
     private var remotePositionApplied = false
     private val handler = Handler(Looper.getMainLooper())
     private val hideRunnable = Runnable { setControlsVisible(false) }
-    private data class NextEpisode(val categoria: String, val slug: String, val titulo: String)
+    private data class NextEpisode(
+        val categoria: String,
+        val slug: String,
+        val titulo: String,
+        val filmeId: String = "",
+        val thumb: String = "",
+        val tipo: String = "episodio",
+        val serieCategoria: String = "",
+        val serieSlug: String = "",
+    )
 
     private val progressRunnable = object : Runnable {
         override fun run() {
@@ -199,8 +208,26 @@ class PlayerActivity : Activity() {
                 val categoria = item.optString("categoria").trim()
                 val slug = item.optString("slug").trim()
                 val titulo = item.optString("titulo").trim().ifBlank { "Próximo episódio" }
+                val filmeId = item.optString("filmeId").trim().ifBlank { slug }
+                val thumb = item.optString("thumb").trim()
+                val tipo = item.optString("tipo").trim().ifBlank { "episodio" }
+                // A fila criada pela página da série pode não repetir o contexto em
+                // cada item; nesse caso, herdamos o contexto do episódio atual.
+                val serieCategoria = item.optString("serieCategoria").trim()
+                    .ifBlank { currentSerieCategoria }
+                val serieSlug = item.optString("serieSlug").trim()
+                    .ifBlank { currentSerieSlug }
                 if (categoria.isNotBlank() && slug.isNotBlank()) {
-                    nextEpisodes += NextEpisode(categoria, slug, titulo)
+                    nextEpisodes += NextEpisode(
+                        categoria,
+                        slug,
+                        titulo,
+                        filmeId,
+                        thumb,
+                        tipo,
+                        serieCategoria,
+                        serieSlug,
+                    )
                 }
             }
         } catch (error: Throwable) {
@@ -220,9 +247,16 @@ class PlayerActivity : Activity() {
         currentCategoria = next.categoria
         currentSlug = next.slug
         currentTitle = next.titulo
-        currentFilmeId = currentSlug
-        currentThumb = ""
-        currentTipo = "episodio"
+        currentFilmeId = next.filmeId.ifBlank { currentSlug }
+        currentThumb = next.thumb
+        currentTipo = next.tipo.ifBlank { "episodio" }
+        currentSerieCategoria = next.serieCategoria.ifBlank { currentSerieCategoria }
+        currentSerieSlug = next.serieSlug.ifBlank { currentSerieSlug }
+        remotePositionMs = null
+        remotePositionLoaded = false
+        remotePositionApplied = false
+        lastRemoteSaveAt = 0L
+        loadRemoteProgress()
         titleView.text = currentTitle
         playerReady = false
         updateNextEpisodeButton()
@@ -729,9 +763,15 @@ class PlayerActivity : Activity() {
     private fun loadRemoteProgress() {
         if (!AuthSession.hasToken() || currentFilmeId.isBlank()) return
         val filmeId = currentFilmeId
+        val categoria = currentCategoria
+        val slug = currentSlug
         Thread {
             val result = AuthSession.continueWatching()
-            val match = result.value.orEmpty().firstOrNull { it.filmeId == filmeId }
+            val match = result.value.orEmpty().firstOrNull { item ->
+                item.filmeId == filmeId ||
+                    item.slug == slug ||
+                    (item.categoria == categoria && item.slug == slug)
+            }
             remotePositionMs = match?.tempo?.let { parseRemoteTime(it) }
             remotePositionLoaded = true
             runOnUiThread { player?.let { applyRemotePositionIfReady(it) } }
@@ -770,8 +810,23 @@ class PlayerActivity : Activity() {
         val filmeId = currentFilmeId
         val titulo = currentTitle
         val thumb = currentThumb
+        val categoria = currentCategoria
+        val slug = currentSlug
+        val tipo = currentTipo
+        val serieCategoria = currentSerieCategoria
+        val serieSlug = currentSerieSlug
         Thread {
-            val result = AuthSession.saveProgress(filmeId, titulo, tempo, thumb)
+            val result = AuthSession.saveProgress(
+                filmeId = filmeId,
+                titulo = titulo,
+                tempo = tempo,
+                thumb = thumb,
+                categoria = categoria,
+                slug = slug,
+                tipo = tipo,
+                serieCategoria = serieCategoria,
+                serieSlug = serieSlug,
+            )
             if (!result.ok) Log.w(TAG, "Falha ao sincronizar histórico remoto: ${result.message}")
             else Log.d(TAG, "Histórico remoto sincronizado para $filmeId em $tempo")
         }.apply { name = "TedflixRemoteProgress"; start() }

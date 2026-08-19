@@ -1,6 +1,6 @@
 import { el, svgIcone } from "./dom.js";
 import { NAV, CATEGORIAS } from "./config.js";
-import { getFilmes, getSeries, getGenero } from "./api.js";
+import { getFilmes, getSeries, getGenero, buscar, ehSerie, parseLink } from "./api.js";
 import paginaInicio from "./pages/home.js";
 import { paginaCatalogo } from "./pages/catalogo.js";
 import paginaCategorias from "./pages/categorias.js";
@@ -50,6 +50,37 @@ function resolver(hash) {
   }
   if (p[0] === "agenda") return (r) => paginaAgenda(r);
   if (p[0] === "busca") return (r) => paginaBusca(r);
+  if (p[0] === "favorito") {
+    const params = new URLSearchParams(queryString);
+    const titulo = params.get("titulo") || "";
+    return async (r) => {
+      if (!titulo) {
+        r.append(el("p", { class: "center" }, "Favorito sem título disponível."));
+        return null;
+      }
+      try {
+        const resposta = await buscar(titulo);
+        const itens = resposta.resultados || [];
+        const normalizado = (titulo || "").trim().toLowerCase();
+        const item = itens.find((i) => (i.titulo || "").trim().toLowerCase() === normalizado) || itens[0];
+        if (!item) {
+          r.append(el("p", { class: "center" }, "Não foi possível localizar este título no catálogo."));
+          return null;
+        }
+        const link = parseLink(item.link_assistir);
+        const categoria = item.categoria || link.categoria;
+        const slug = item.slug || link.slug;
+        if (!categoria || !slug) {
+          r.append(el("p", { class: "center" }, "Este favorito não possui uma rota de detalhe válida."));
+          return null;
+        }
+        return paginaDetalhe(r, { tipo: ehSerie(item) ? "serie" : "filme", categoria, slug });
+      } catch (error) {
+        r.append(el("p", { class: "center" }, "Não foi possível abrir este favorito agora."));
+        return null;
+      }
+    };
+  }
   if (p[0] === "titulo" && p.length >= 4)
     return (r) => paginaDetalhe(r, { tipo: p[1], categoria: p[2], slug: p[3] });
   if (p[0] === "assistir" && p.length >= 3) {
@@ -102,6 +133,7 @@ function tituloDaRota(hash) {
     categorias: "Categorias",
     agenda: "Agenda de episódios",
     busca: "Buscar",
+    favorito: "Favorito",
     titulo: "Detalhes",
     assistir: "Assistir",
   };

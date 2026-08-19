@@ -5,7 +5,6 @@ import { cardTitulo } from "../components/card.js";
 
 export default async function paginaDetalhe(raiz, { tipo, categoria, slug }) {
   const page = el("div", { class: "page" });
-  const progresso = lerProgressoLocal();
   raiz.append(page);
   page.append(el("div", { class: "center" }, [el("div", { class: "spinner" })]));
 
@@ -99,6 +98,9 @@ export default async function paginaDetalhe(raiz, { tipo, categoria, slug }) {
 }
 
 async function blocoTemporadas(categoria, slug, serieThumb = "") {
+  // O mapa é por episódio (categoria:slug), não por série inteira.
+  // A ponte Android retorna os registros locais já mesclados com o histórico remoto.
+  const progresso = lerProgressoLocal();
   const bloco = el("section", { class: "section" });
   const chips = el("div", { class: "chips" });
   const lista = el("div", {});
@@ -146,7 +148,15 @@ async function blocoTemporadas(categoria, slug, serieThumb = "") {
       };
       eps.forEach((ep, index) => {
         const info = dadosEpisodio(ep);
-        const fila = eps.slice(index + 1).map(dadosEpisodio).filter(Boolean);
+        const fila = eps.slice(index + 1)
+          .map(dadosEpisodio)
+          .filter(Boolean)
+          .map((item) => ({
+            ...item,
+            tipo: "episodio",
+            serieCategoria: categoria,
+            serieSlug: slug,
+          }));
         const queryParams = new URLSearchParams({
           filmeId: info?.filmeId || info?.slug || "",
           thumb: info?.thumb || serieThumb,

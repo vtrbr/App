@@ -54,6 +54,18 @@ object AuthSession {
         val titulo: String,
         val thumb: String,
         val adicionadoEm: String,
+        val categoria: String = "",
+        val slug: String = "",
+        val tipo: String = "",
+    )
+
+    data class CatalogMatch(
+        val filmeId: String,
+        val titulo: String,
+        val thumb: String,
+        val categoria: String,
+        val slug: String,
+        val tipo: String,
     )
 
     data class HistoryItem(
@@ -62,6 +74,11 @@ object AuthSession {
         val tempo: String,
         val thumb: String,
         val ultimoAcesso: String,
+        val categoria: String = "",
+        val slug: String = "",
+        val tipo: String = "",
+        val serieCategoria: String = "",
+        val serieSlug: String = "",
     )
 
     data class Result<T>(
@@ -170,11 +187,20 @@ object AuthSession {
 
     fun status(): Result<JSONObject> = authenticatedJson("GET", "/users/me/status")
 
-    fun updateUsername(username: String): Result<JSONObject> = authenticatedJson(
-        "PATCH",
-        "/users/me",
-        JSONObject().put("username", username.trim()).toString(),
-    )
+    fun updateUsername(username: String): Result<JSONObject> {
+        val clean = username.trim()
+        if (clean.isBlank()) return Result(false, message = "Informe um nome para o perfil.")
+        val result = authenticatedJson(
+            "PATCH",
+            "/users/me",
+            JSONObject().put("username", clean).toString(),
+        )
+        if (result.ok) {
+            val current = cachedUser()
+            if (current != null) saveLogin(token().orEmpty(), current.copy(username = clean))
+        }
+        return result
+    }
 
     fun changePassword(currentPassword: String, newPassword: String): Result<JSONObject> = authenticatedJson(
         "PATCH",
@@ -212,8 +238,47 @@ object AuthSession {
         buildList {
             for (i in 0 until array.length()) {
                 val item = array.optJSONObject(i) ?: continue
-                add(Favorite(item.optString("filmeId"), item.optString("titulo"), item.optString("thumb"), item.optString("adicionadoEm")))
+                add(
+                    Favorite(
+                        filmeId = item.optString("filmeId"),
+                        titulo = item.optString("titulo"),
+                        thumb = item.optString("thumb").ifBlank { item.optString("imagem") },
+                        adicionadoEm = item.optString("adicionadoEm"),
+                        categoria = item.optString("categoria"),
+                        slug = item.optString("slug"),
+                        tipo = item.optString("tipo"),
+                    ),
+                )
             }
+        }
+    }
+
+    fun resolveCatalogItem(query: String, filmeId: String = ""): Result<CatalogMatch?> {
+        if (query.isBlank() && filmeId.isBlank()) return Result(true, null, statusCode = 200)
+        return authenticatedJson("GET", "/api/buscar/${Uri.encode(query.ifBlank { filmeId })}").map { json ->
+            val array = json.optJSONArray("resultados") ?: JSONArray()
+            val normalizedQuery = query.trim().lowercase()
+            var fallback: CatalogMatch? = null
+            for (i in 0 until array.length()) {
+                val item = array.optJSONObject(i) ?: continue
+                val title = item.optString("titulo").trim()
+                val id = item.optString("filmeId").ifBlank { item.optString("id").ifBlank { item.optString("_id") } }
+                val link = item.optString("link_assistir").replace(Regex("^https?://[^/]+"), "")
+                val parts = link.split("/").filter { it.isNotBlank() }
+                val category = item.optString("categoria").ifBlank { parts.getOrNull(parts.size - 2).orEmpty() }
+                val slug = item.optString("slug").ifBlank { parts.lastOrNull().orEmpty() }
+                val match = CatalogMatch(
+                    filmeId = id,
+                    titulo = title,
+                    thumb = item.optString("thumb").ifBlank { item.optString("imagem") },
+                    categoria = category,
+                    slug = slug,
+                    tipo = item.optString("tipo"),
+                )
+                if (fallback == null) fallback = match
+                if ((filmeId.isNotBlank() && id == filmeId) || (normalizedQuery.isNotBlank() && title.lowercase() == normalizedQuery)) return@map match
+            }
+            fallback
         }
     }
 
@@ -238,15 +303,48 @@ object AuthSession {
         buildList {
             for (i in 0 until array.length()) {
                 val item = array.optJSONObject(i) ?: continue
-                add(HistoryItem(item.optString("filmeId"), item.optString("titulo"), item.optString("tempo"), item.optString("thumb"), item.optString("ultimoAcesso")))
+                add(
+                    HistoryItem(
+                        filmeId = item.optString("filmeId"),
+                        titulo = item.optString("titulo"),
+                        tempo = item.optString("tempo"),
+                        thumb = item.optString("thumb"),
+                        ultimoAcesso = item.optString("ultimoAcesso"),
+                        categoria = item.optString("categoria"),
+                        slug = item.optString("slug"),
+                        tipo = item.optString("tipo"),
+                        serieCategoria = item.optString("serieCategoria"),
+                        serieSlug = item.optString("serieSlug"),
+                    ),
+                )
             }
         }
     }
 
-    fun saveProgress(filmeId: String, titulo: String, tempo: String, thumb: String): Result<JSONObject> = authenticatedJson(
+    fun saveProgress(
+        filmeId: String,
+        titulo: String,
+        tempo: String,
+        thumb: String,
+        categoria: String = "",
+        slug: String = "",
+        tipo: String = "",
+        serieCategoria: String = "",
+        serieSlug: String = "",
+    ): Result<JSONObject> = authenticatedJson(
         "POST",
         "/api/history/save-progress",
-        JSONObject().put("filmeId", filmeId).put("titulo", titulo).put("tempo", tempo).put("thumb", thumb).toString(),
+        JSONObject().apply {
+            put("filmeId", filmeId)
+            put("titulo", titulo)
+            put("tempo", tempo)
+            put("thumb", thumb)
+            if (categoria.isNotBlank()) put("categoria", categoria)
+            if (slug.isNotBlank()) put("slug", slug)
+            if (tipo.isNotBlank()) put("tipo", tipo)
+            if (serieCategoria.isNotBlank()) put("serieCategoria", serieCategoria)
+            if (serieSlug.isNotBlank()) put("serieSlug", serieSlug)
+        }.toString(),
     )
 
     fun logout(): Result<JSONObject> {

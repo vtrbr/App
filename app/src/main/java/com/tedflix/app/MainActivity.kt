@@ -388,10 +388,22 @@ class MainActivity : Activity() {
                 val remote = AuthSession.continueWatching().value.orEmpty()
                 for (i in 0 until local.length()) {
                     val item = local.optJSONObject(i) ?: continue
-                    val match = remote.firstOrNull { it.filmeId == item.optString("filmeId").ifBlank { item.optString("slug") } || it.filmeId == item.optString("slug") }
+                    val filmeId = item.optString("filmeId").ifBlank { item.optString("slug") }
+                    val slug = item.optString("slug")
+                    val categoria = item.optString("categoria")
+                    val match = remote.firstOrNull { remoteItem ->
+                        remoteItem.filmeId == filmeId ||
+                            (slug.isNotBlank() && remoteItem.slug == slug) ||
+                            (categoria.isNotBlank() && remoteItem.categoria == categoria && remoteItem.slug == slug)
+                    }
                     if (match != null) {
                         if (match.thumb.isNotBlank()) item.put("thumb", match.thumb)
                         if (match.tempo.isNotBlank()) item.put("tempo", match.tempo)
+                        if (item.optString("categoria").isBlank() && match.categoria.isNotBlank()) item.put("categoria", match.categoria)
+                        if (item.optString("slug").isBlank() && match.slug.isNotBlank()) item.put("slug", match.slug)
+                        if (item.optString("tipo").isBlank() && match.tipo.isNotBlank()) item.put("tipo", match.tipo)
+                        if (item.optString("serieCategoria").isBlank() && match.serieCategoria.isNotBlank()) item.put("serieCategoria", match.serieCategoria)
+                        if (item.optString("serieSlug").isBlank() && match.serieSlug.isNotBlank()) item.put("serieSlug", match.serieSlug)
                         item.put("remote", true)
                     }
                 }

@@ -56,7 +56,7 @@ async function carregarContinuarAssistindo() {
     if (!window.AndroidPlayer?.getContinueWatching) return [];
     const itens = JSON.parse(window.AndroidPlayer.getContinueWatching() || "[]");
     if (!Array.isArray(itens)) return [];
-    return (await Promise.all(itens
+    const cards = await Promise.all(itens
       .filter((item) => item && item.categoria && item.slug)
       .map(async (item) => {
         let detalhe = null;
@@ -65,16 +65,36 @@ async function carregarContinuarAssistindo() {
         const ehEpisodio = Boolean(item.serieSlug || item.serieCategoria || String(item.tipo || "").toLowerCase().includes("epis"));
         const detalheCategoria = item.serieCategoria || item.categoria;
         const detalheSlug = item.serieSlug || item.slug;
+        let detalhePai = detalhe;
+        if (ehEpisodio) {
+          try { detalhePai = await getTitulo(detalheCategoria, detalheSlug); } catch (_) {}
+        }
+        const tipoCard = ehEpisodio ? (detalhePai?.tipo || "Série") : tipo;
         return {
-          ...detalhe,
+          ...detalhePai,
           ...item,
-          tipo,
-          titulo: item.titulo || detalhe?.titulo || "Tedflix",
-          imagem: item.thumb || item.imagem || detalhe?.imagem || "",
+          tipo: tipoCard,
+          // O percentual continua sendo do episódio salvo, mas o card é da série.
+          titulo: ehEpisodio
+            ? (detalhePai?.titulo || item.serieTitulo || item.titulo || "Série")
+            : (item.titulo || detalhe?.titulo || "Tedflix"),
+          imagem: ehEpisodio
+            ? (item.serieThumb || detalhePai?.imagem || item.thumb || detalhe?.imagem || "")
+            : (item.thumb || item.imagem || detalhe?.imagem || ""),
           link_assistir: `/titulo/${ehEpisodio ? "serie" : (tipo.toLowerCase() === "serie" ? "serie" : "filme")}/${detalheCategoria}/${detalheSlug}`,
           progresso: Number(item.percent || 0),
         };
-      }))).filter(Boolean);
+      })).filter(Boolean);
+    const seriesJaExibidas = new Set();
+    return cards.filter((item) => {
+      const ehEpisodio = Boolean(item.serieSlug || item.serieCategoria || String(item.tipo || "").toLowerCase().includes("epis"));
+      const chave = ehEpisodio
+        ? `serie:${item.serieCategoria || item.categoria}:${item.serieSlug || item.slug}`
+        : `titulo:${item.categoria}:${item.slug}`;
+      if (seriesJaExibidas.has(chave)) return false;
+      seriesJaExibidas.add(chave);
+      return true;
+    });
   } catch (e) {
     return [];
   }

@@ -1,6 +1,7 @@
 package com.tedflix.app.auth
 
 import android.app.Activity
+import android.content.Intent
 import android.graphics.BitmapFactory
 import android.graphics.Color
 import android.graphics.Typeface
@@ -15,6 +16,8 @@ import android.widget.ProgressBar
 import android.widget.ScrollView
 import android.widget.TextView
 import androidx.media3.common.util.UnstableApi
+import com.tedflix.app.ContinueWatchingStore
+import com.tedflix.app.MainActivity
 import java.net.URL
 
 @UnstableApi
@@ -54,30 +57,92 @@ class FavoritesActivity : Activity() {
         progress.visibility = View.VISIBLE
         list.removeAllViews()
         Thread {
-            val result = AuthSession.listFavorites()
+            val favoritesResult = AuthSession.listFavorites()
+            val historyResult = AuthSession.continueWatching()
+            val localProgress = ContinueWatchingStore.read(applicationContext)
             runOnUiThread {
                 progress.visibility = View.GONE
-                if (!result.ok) { list.addView(message(result.message.ifBlank { "Não foi possível carregar os favoritos." })); return@runOnUiThread }
-                val favorites = result.value.orEmpty()
-                if (favorites.isEmpty()) list.addView(message("Você ainda não adicionou nenhum favorito."))
-                else favorites.forEach { addFavorite(it) }
+                if (!favoritesResult.ok) {
+                    list.addView(message(favoritesResult.message.ifBlank { "Não foi possível carregar os favoritos." }))
+                    return@runOnUiThread
+                }
+                val favorites = favoritesResult.value.orEmpty()
+                if (favorites.isEmpty()) {
+                    list.addView(message("Você ainda não adicionou nenhum favorito."))
+                    return@runOnUiThread
+                }
+                val remoteById = historyResult.value.orEmpty().associateBy { it.filmeId }
+                val remoteByTitle = historyResult.value.orEmpty().associateBy { it.titulo.trim().lowercase() }
+                Thread {
+                    val enriched = favorites.map { favorite ->
+                        if (favorite.categoria.isNotBlank() && favorite.slug.isNotBlank() && favorite.thumb.isNotBlank()) {
+                            favorite
+                        } else {
+                            val resolved = AuthSession.resolveCatalogItem(favorite.titulo, favorite.filmeId).value
+                            if (resolved == null) favorite else favorite.copy(
+                                thumb = favorite.thumb.ifBlank { resolved.thumb },
+                                categoria = favorite.categoria.ifBlank { resolved.categoria },
+                                slug = favorite.slug.ifBlank { resolved.slug },
+                                tipo = favorite.tipo.ifBlank { resolved.tipo },
+                            )
+                        }
+                    }
+                    runOnUiThread {
+                        enriched.forEach { favorite ->
+                            val local = localProgress.firstOrNull { it.filmeId == favorite.filmeId || it.titulo.equals(favorite.titulo, ignoreCase = true) }
+                            val remote = remoteById[favorite.filmeId] ?: remoteByTitle[favorite.titulo.trim().lowercase()]
+                            addFavorite(favorite, local, remote)
+                        }
+                    }
+                }.start()
             }
         }.start()
     }
 
-    private fun addFavorite(favorite: AuthSession.Favorite) {
+    private fun addFavorite(
+        favorite: AuthSession.Favorite,
+        local: ContinueWatchingStore.Entry?,
+        remote: AuthSession.HistoryItem?,
+    ) {
         val row = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
             setPadding(dp(10), dp(10), dp(10), dp(10))
             background = rounded(Color.rgb(18, 18, 20), dp(14), Color.argb(55, 255, 255, 255), dp(1))
+            setOnClickListener { openFavorite(favorite, local) }
         }
         val image = ImageView(this).apply { scaleType = ImageView.ScaleType.CENTER_CROP; setBackgroundColor(Color.rgb(35, 35, 38)) }
         row.addView(image, LinearLayout.LayoutParams(dp(74), dp(104)))
         val info = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(dp(12), 0, dp(8), 0) }
         info.addView(TextView(this).apply { text = favorite.titulo.ifBlank { "Título salvo" }; textSize = 16f; setTextColor(Color.WHITE); typeface = Typeface.DEFAULT_BOLD })
-        info.addView(TextView(this).apply { text = favorite.filmeId; textSize = 11f; setTextColor(Color.GRAY); setPadding(0, dp(6), 0, dp(10)) })
-        info.addView(button("Remover", 12) { removeFavorite(favorite) }.apply { background = rounded(Color.rgb(95, 15, 22), dp(8), Color.TRANSPARENT, 0) }, LinearLayout.LayoutParams(dp(92), dp(40)))
+        val context = local?.takeIf { it.serieSlug.isNotBlank() }?.let { "Série · ${it.serieSlug}" } ?: "Filme"
+        info.addView(TextView(this).apply { text = context; textSize = 11f; setTextColor(Color.GRAY); setPadding(0, dp(6), 0, dp(6)) })
+
+        val percent = local?.percent ?: 0
+        if (percent > 0) {
+            val bar = ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal).apply {
+                max = 100
+                progress = percent
+                progressTintList = android.content.res.ColorStateList.valueOf(Color.rgb(229, 9, 20))
+                progressBackgroundTintList = android.content.res.ColorStateList.valueOf(Color.rgb(75, 75, 80))
+            }
+            info.addView(bar, LinearLayout.LayoutParams(-1, dp(5)).apply { bottomMargin = dp(4) })
+            info.addView(TextView(this).apply {
+                text = "Continuar em ${formatMs(local?.positionMs ?: 0L)}"
+                textSize = 11f
+                setTextColor(Color.LTGRAY)
+            })
+        } else if (!remote?.tempo.isNullOrBlank()) {
+            info.addView(TextView(this).apply {
+                text = "Continuar em ${remote?.tempo}"
+                textSize = 11f
+                setTextColor(Color.LTGRAY)
+            })
+        }
+
+        info.addView(button("Remover", 12) { removeFavorite(favorite) }.apply {
+            background = rounded(Color.rgb(95, 15, 22), dp(8), Color.TRANSPARENT, 0)
+        }, LinearLayout.LayoutParams(dp(92), dp(40)).apply { topMargin = dp(8) })
         row.addView(info, LinearLayout.LayoutParams(0, -2, 1f))
         list.addView(row, LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = dp(10) })
         if (favorite.thumb.isNotBlank()) Thread {
@@ -86,6 +151,28 @@ class FavoritesActivity : Activity() {
                 runOnUiThread { if (bitmap != null) image.setImageBitmap(bitmap) }
             } catch (_: Throwable) {}
         }.start()
+    }
+
+    private fun openFavorite(favorite: AuthSession.Favorite, local: ContinueWatchingStore.Entry?) {
+        val localIsSeries = local?.serieSlug?.isNotBlank() == true
+        val category = favorite.categoria.ifBlank {
+            local?.serieCategoria?.ifBlank { local.categoria }.orEmpty()
+        }
+        val slug = favorite.slug.ifBlank {
+            if (localIsSeries) local?.serieSlug.orEmpty() else local?.slug.orEmpty()
+        }
+        val type = when {
+            localIsSeries -> "serie"
+            favorite.tipo.contains("séri", true) || favorite.tipo.contains("serie", true) -> "serie"
+            else -> "filme"
+        }
+        startActivity(Intent(this, MainActivity::class.java).apply {
+            putExtra(MainActivity.EXTRA_OPEN_FAVORITE_TITLE, favorite.titulo)
+            putExtra(MainActivity.EXTRA_OPEN_FAVORITE_CATEGORY, category)
+            putExtra(MainActivity.EXTRA_OPEN_FAVORITE_SLUG, slug)
+            putExtra(MainActivity.EXTRA_OPEN_FAVORITE_TYPE, type)
+        })
+        finish()
     }
 
     private fun removeFavorite(favorite: AuthSession.Favorite) {
@@ -97,6 +184,11 @@ class FavoritesActivity : Activity() {
                 if (!result.ok) toast(result.message.ifBlank { "Não foi possível remover o favorito." }) else loadFavorites()
             }
         }.start()
+    }
+
+    private fun formatMs(value: Long): String {
+        val total = (value / 1000L).coerceAtLeast(0L)
+        return "%02d:%02d:%02d".format(total / 3600L, (total % 3600L) / 60L, total % 60L)
     }
 
     private fun message(text: String) = TextView(this).apply { this.text = text; textSize = 14f; setTextColor(Color.LTGRAY); gravity = Gravity.CENTER; setPadding(dp(18), dp(40), dp(18), dp(40)); background = rounded(Color.rgb(18, 18, 20), dp(14), Color.argb(55, 255, 255, 255), dp(1)) }
