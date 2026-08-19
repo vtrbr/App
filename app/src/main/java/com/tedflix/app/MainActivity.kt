@@ -25,6 +25,7 @@ import androidx.media3.common.util.UnstableApi
 import com.tedflix.app.auth.AccountActivity
 import com.tedflix.app.auth.AuthActivity
 import com.tedflix.app.auth.AuthSession
+import com.tedflix.app.auth.FavoritesActivity
 import com.tedflix.app.auth.NotificationActivity
 import com.tedflix.app.NotificationHelper
 import com.tedflix.app.requestNotificationPermissionIfNeeded
@@ -69,44 +70,98 @@ class MainActivity : Activity() {
 
     private fun showProfileChooser() {
         val name = AuthSession.cachedUser()?.username?.ifBlank { "Meu perfil" } ?: "Meu perfil"
-        val root = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            gravity = Gravity.CENTER
-            setPadding(dp(24), dp(24), dp(24), dp(24))
-            setBackgroundColor(Color.rgb(18, 18, 18))
+        val root = android.widget.FrameLayout(this).apply {
+            setBackgroundColor(Color.rgb(5, 6, 9))
         }
-        root.addView(TextView(this).apply {
-            text = "TEDFLIX"
-            textSize = 14f
-            setTextColor(Color.rgb(229, 9, 20))
-            typeface = android.graphics.Typeface.DEFAULT_BOLD
-            gravity = Gravity.CENTER
-        }, LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = dp(38) })
-        root.addView(TextView(this).apply {
+        val banner = ImageView(this).apply {
+            setImageResource(com.tedflix.app.R.drawable.tedflix_auth_banner)
+            scaleType = ImageView.ScaleType.CENTER_CROP
+            alpha = 0.82f
+        }
+        root.addView(banner, android.widget.FrameLayout.LayoutParams(-1, -1))
+        val shade = View(this).apply {
+            background = android.graphics.drawable.GradientDrawable(
+                android.graphics.drawable.GradientDrawable.Orientation.TOP_BOTTOM,
+                intArrayOf(Color.argb(120, 5, 6, 9), Color.rgb(5, 6, 9)),
+            )
+        }
+        root.addView(shade, android.widget.FrameLayout.LayoutParams(-1, -1))
+
+        val content = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            gravity = Gravity.CENTER_HORIZONTAL
+            setPadding(dp(24), dp(40), dp(24), dp(34))
+        }
+        val logo = ImageView(this).apply {
+            setImageResource(com.tedflix.app.R.drawable.tedflix_auth_logo)
+            scaleType = ImageView.ScaleType.CENTER_INSIDE
+            contentDescription = "Tedflix"
+        }
+        content.addView(logo, LinearLayout.LayoutParams(dp(150), dp(54)).apply { bottomMargin = dp(42) })
+        content.addView(TextView(this).apply {
             text = "Quem está assistindo?"
-            textSize = 26f
+            textSize = 28f
             setTextColor(Color.WHITE)
             gravity = Gravity.CENTER
-        }, LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = dp(26) })
+            typeface = android.graphics.Typeface.DEFAULT_BOLD
+        }, LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = dp(28) })
+
+        val card = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            gravity = Gravity.CENTER_HORIZONTAL
+            setPadding(dp(12), dp(12), dp(12), dp(16))
+            background = android.graphics.drawable.GradientDrawable().apply {
+                setColor(Color.argb(210, 18, 19, 24))
+                cornerRadius = dp(18).toFloat()
+                setStroke(dp(1), Color.argb(90, 255, 255, 255))
+            }
+            elevation = dp(8).toFloat()
+        }
         val avatar = ImageView(this).apply {
             setImageResource(com.tedflix.app.R.drawable.tedflix_auth_banner)
             scaleType = ImageView.ScaleType.CENTER_CROP
             contentDescription = name
+            background = android.graphics.drawable.GradientDrawable().apply {
+                cornerRadius = dp(14).toFloat()
+                setStroke(dp(2), Color.rgb(229, 9, 20))
+            }
+            clipToOutline = true
             setOnClickListener {
-                root.removeAllViews()
-                root.addView(ProgressBar(this@MainActivity).apply {
-                    indeterminateTintList = android.content.res.ColorStateList.valueOf(Color.rgb(229, 9, 20))
-                }, LinearLayout.LayoutParams(dp(52), dp(52)))
-                root.postDelayed({ setupWebView() }, 220L)
+                content.visibility = View.GONE
+                shade.alpha = 0.98f
+                val loader = LinearLayout(this@MainActivity).apply {
+                    orientation = LinearLayout.VERTICAL
+                    gravity = Gravity.CENTER
+                    addView(ProgressBar(this@MainActivity).apply {
+                        indeterminateTintList = android.content.res.ColorStateList.valueOf(Color.rgb(229, 9, 20))
+                    }, LinearLayout.LayoutParams(dp(48), dp(48)))
+                    addView(TextView(this@MainActivity).apply {
+                        text = "Carregando seu perfil..."
+                        textSize = 14f
+                        setTextColor(Color.WHITE)
+                        gravity = Gravity.CENTER
+                    }, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(16) })
+                }
+                root.addView(loader, android.widget.FrameLayout.LayoutParams(-1, -1))
+                root.postDelayed({ setupWebView() }, 320L)
             }
         }
-        root.addView(avatar, LinearLayout.LayoutParams(dp(132), dp(132)).apply { bottomMargin = dp(12) })
-        root.addView(TextView(this).apply {
+        card.addView(avatar, LinearLayout.LayoutParams(dp(142), dp(174)))
+        card.addView(TextView(this).apply {
             text = name
-            textSize = 15f
+            textSize = 16f
+            setTextColor(Color.WHITE)
+            gravity = Gravity.CENTER
+            typeface = android.graphics.Typeface.DEFAULT_BOLD
+        }, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(12) })
+        content.addView(card, LinearLayout.LayoutParams(dp(190), -2))
+        content.addView(TextView(this).apply {
+            text = "Toque no seu perfil para entrar"
+            textSize = 13f
             setTextColor(Color.LTGRAY)
             gravity = Gravity.CENTER
-        }, LinearLayout.LayoutParams(-1, -2))
+        }, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(22) })
+        root.addView(content, android.widget.FrameLayout.LayoutParams(-1, -1))
         setContentView(root)
     }
 
@@ -233,7 +288,17 @@ class MainActivity : Activity() {
 
     private class AndroidPlayerBridge(private val activity: MainActivity) {
         @JavascriptInterface
-        fun openPlayer(categoria: String?, slug: String?, titulo: String?, filaJson: String?) {
+        fun openPlayer(
+            categoria: String?,
+            slug: String?,
+            titulo: String?,
+            filaJson: String?,
+            filmeId: String? = null,
+            thumb: String? = null,
+            tipo: String? = null,
+            serieCategoria: String? = null,
+            serieSlug: String? = null,
+        ) {
             val categoriaValue = categoria.orEmpty().trim()
             val slugValue = slug.orEmpty().trim()
             val tituloValue = titulo.orEmpty().trim()
@@ -252,6 +317,11 @@ class MainActivity : Activity() {
                         putExtra(PlayerActivity.EXTRA_SLUG, slugValue)
                         putExtra(PlayerActivity.EXTRA_TITULO, tituloValue)
                         putExtra(PlayerActivity.EXTRA_NEXT_EPISODES, filaJson.orEmpty())
+                        putExtra(PlayerActivity.EXTRA_FILME_ID, filmeId.orEmpty().trim().ifBlank { slugValue })
+                        putExtra(PlayerActivity.EXTRA_THUMB, thumb.orEmpty().trim())
+                        putExtra(PlayerActivity.EXTRA_TIPO, tipo.orEmpty().trim())
+                        putExtra(PlayerActivity.EXTRA_SERIE_CATEGORIA, serieCategoria.orEmpty().trim())
+                        putExtra(PlayerActivity.EXTRA_SERIE_SLUG, serieSlug.orEmpty().trim())
                     }
                     activity.playerWasOpened = true
                     activity.startActivity(intent)
@@ -279,12 +349,76 @@ class MainActivity : Activity() {
         }
 
         @JavascriptInterface
+        fun openFavorites() {
+            activity.runOnUiThread {
+                if (!AuthSession.hasToken()) {
+                    activity.startActivity(Intent(activity, AuthActivity::class.java))
+                    return@runOnUiThread
+                }
+                try {
+                    activity.startActivity(Intent(activity, FavoritesActivity::class.java))
+                } catch (error: Throwable) {
+                    Log.e("TedflixMain", "Falha ao abrir favoritos", error)
+                    Toast.makeText(activity, "Não foi possível abrir os favoritos.", Toast.LENGTH_LONG).show()
+                }
+            }
+        }
+
+        @JavascriptInterface
         fun getContinueWatching(): String {
             return try {
-                ContinueWatchingStore.toJson(activity)
+                val local = org.json.JSONArray(ContinueWatchingStore.toJson(activity))
+                if (!AuthSession.hasToken()) return local.toString()
+                val remote = AuthSession.continueWatching().value.orEmpty()
+                for (i in 0 until local.length()) {
+                    val item = local.optJSONObject(i) ?: continue
+                    val match = remote.firstOrNull { it.filmeId == item.optString("filmeId").ifBlank { item.optString("slug") } || it.filmeId == item.optString("slug") }
+                    if (match != null) {
+                        if (match.thumb.isNotBlank()) item.put("thumb", match.thumb)
+                        if (match.tempo.isNotBlank()) item.put("tempo", match.tempo)
+                        item.put("remote", true)
+                    }
+                }
+                local.toString()
             } catch (error: Throwable) {
-                Log.w("TedflixMain", "Falha ao ler progresso local", error)
-                "[]"
+                Log.w("TedflixMain", "Falha ao combinar histórico remoto", error)
+                try { ContinueWatchingStore.toJson(activity) } catch (_: Throwable) { "[]" }
+            }
+        }
+
+        @JavascriptInterface
+        fun getFavorites(): String {
+            return try {
+                val result = AuthSession.listFavorites()
+                if (!result.ok) "{\"success\":false,\"error\":${org.json.JSONObject.quote(result.message)}}"
+                else org.json.JSONObject().put("success", true).put("favoritos", org.json.JSONArray().apply {
+                    result.value.orEmpty().forEach { item ->
+                        put(org.json.JSONObject().apply {
+                            put("filmeId", item.filmeId)
+                            put("titulo", item.titulo)
+                            put("thumb", item.thumb)
+                            put("adicionadoEm", item.adicionadoEm)
+                        })
+                    }
+                }).toString()
+            } catch (error: Throwable) {
+                Log.w("TedflixMain", "Falha ao ler favoritos", error)
+                "{\"success\":false,\"error\":\"Não foi possível carregar favoritos.\"}"
+            }
+        }
+
+        @JavascriptInterface
+        fun toggleFavorite(filmeId: String?, titulo: String?, thumb: String?): String {
+            return try {
+                val result = AuthSession.toggleFavorite(filmeId.orEmpty(), titulo.orEmpty(), thumb.orEmpty())
+                org.json.JSONObject().apply {
+                    put("success", result.ok)
+                    if (result.value != null) put("favorito", result.value)
+                    if (result.message.isNotBlank()) put("error", result.message)
+                }.toString()
+            } catch (error: Throwable) {
+                Log.w("TedflixMain", "Falha ao alternar favorito", error)
+                "{\"success\":false,\"favorito\":false,\"error\":\"Não foi possível atualizar o favorito.\"}"
             }
         }
 

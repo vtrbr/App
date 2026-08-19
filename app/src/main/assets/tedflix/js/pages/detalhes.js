@@ -44,12 +44,30 @@ export default async function paginaDetalhe(raiz, { tipo, categoria, slug }) {
     ...(dados.generos || []).slice(0, 3),
   ].filter(Boolean);
 
-  const acao = el("div", { style: "display:flex;gap:10px;margin-top:14px;flex-wrap:wrap" });
+  const filmeId = String(dados.filmeId || dados.id || dados._id || dados.tmdb_id || slug);
+  const thumb = String(dados.imagem || dados.thumb || "");
+  let favorito = lerFavorito(filmeId);
+  const favoritoBtn = el("button", { class: `btn ghost favorito-btn${favorito ? " ativo" : ""}`, type: "button" }, favorito ? "♥ Favorito" : "♡ Favoritar");
+  favoritoBtn.addEventListener("click", () => {
+    try {
+      const resposta = JSON.parse(window.AndroidPlayer?.toggleFavorite?.(filmeId, dados.titulo || "Tedflix", thumb) || "{}");
+      if (!resposta.success) throw new Error(resposta.error || "Não foi possível atualizar o favorito.");
+      favorito = typeof resposta.favorito === "boolean" ? resposta.favorito : !favorito;
+      favoritoBtn.textContent = favorito ? "♥ Favorito" : "♡ Favoritar";
+      favoritoBtn.classList.toggle("ativo", favorito);
+    } catch (e) {
+      favoritoBtn.textContent = e.message || "Erro ao salvar";
+      setTimeout(() => { favoritoBtn.textContent = favorito ? "♥ Favorito" : "♡ Favoritar"; }, 1800);
+    }
+  });
+
+  const acao = el("div", { style: "display:flex;gap:10px;margin-top:14px;flex-wrap:wrap" }, [favoritoBtn]);
   if (tipo !== "serie") {
-    acao.append(
+    const params = new URLSearchParams({ filmeId, thumb, tipo: dados.tipo || tipo || "filme" });
+    acao.prepend(
       el("a", {
         class: "btn primary",
-        href: `#/assistir/${categoria}/${slug}`,
+        href: `#/assistir/${categoria}/${slug}?${params.toString()}`,
         html: '<svg viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>Assistir',
       }),
     );
@@ -64,7 +82,7 @@ export default async function paginaDetalhe(raiz, { tipo, categoria, slug }) {
 
   page.append(capa, corpo);
 
-  if (tipo === "serie") page.append(await blocoTemporadas(categoria, slug));
+  if (tipo === "serie") page.append(await blocoTemporadas(categoria, slug, thumb));
 
   if ((dados.recomendados || []).length) {
     const rail = el("div", { class: "rail" });
@@ -80,7 +98,7 @@ export default async function paginaDetalhe(raiz, { tipo, categoria, slug }) {
   return page;
 }
 
-async function blocoTemporadas(categoria, slug) {
+async function blocoTemporadas(categoria, slug, serieThumb = "") {
   const bloco = el("section", { class: "section" });
   const chips = el("div", { class: "chips" });
   const lista = el("div", {});
@@ -121,13 +139,23 @@ async function blocoTemporadas(categoria, slug) {
         return {
           categoria: cat,
           slug: sl,
+          filmeId: String(ep.filmeId || ep.id || ep._id || sl),
+          thumb: ep.imagem || serieThumb,
           titulo: `${ep.numero ? `${ep.numero}. ` : ""}${ep.titulo || "Episódio"}`,
         };
       };
       eps.forEach((ep, index) => {
         const info = dadosEpisodio(ep);
         const fila = eps.slice(index + 1).map(dadosEpisodio).filter(Boolean);
-        const query = fila.length ? `?fila=${encodeURIComponent(JSON.stringify(fila))}` : "";
+        const queryParams = new URLSearchParams({
+          filmeId: info?.filmeId || info?.slug || "",
+          thumb: info?.thumb || serieThumb,
+          tipo: "episodio",
+          serieCategoria: categoria,
+          serieSlug: slug,
+        });
+        if (fila.length) queryParams.set("fila", JSON.stringify(fila));
+        const query = info ? `?${queryParams.toString()}` : "";
         frag.append(
           el("a", { class: "ep", href: info ? `#/assistir/${info.categoria}/${info.slug}${query}` : "#" }, [
             el("div", { class: "cap" }, [
@@ -169,6 +197,13 @@ async function blocoTemporadas(categoria, slug) {
 
   carregar(temporadas[0].numero);
   return bloco;
+}
+
+function lerFavorito(filmeId) {
+  try {
+    const resposta = JSON.parse(window.AndroidPlayer?.getFavorites?.() || "{}");
+    return Boolean(resposta.success && (resposta.favoritos || []).some((item) => String(item.filmeId) === String(filmeId)));
+  } catch (_) { return false; }
 }
 
 function lerProgressoLocal() {

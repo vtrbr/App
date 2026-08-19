@@ -62,7 +62,16 @@ function resolver(hash) {
     } catch (e) {
       fila = [];
     }
-    return (r) => paginaAssistir(r, { categoria: p[1], slug: p[2], fila });
+    return (r) => paginaAssistir(r, {
+      categoria: p[1],
+      slug: p[2],
+      fila,
+      filmeId: params.get("filmeId") || "",
+      thumb: params.get("thumb") || "",
+      tipo: params.get("tipo") || "",
+      serieCategoria: params.get("serieCategoria") || "",
+      serieSlug: params.get("serieSlug") || "",
+    });
   }
   if (p[0] === "config") return (r) => paginaConfiguracoes(r);
 

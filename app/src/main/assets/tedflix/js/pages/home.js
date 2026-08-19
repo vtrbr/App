@@ -62,13 +62,16 @@ async function carregarContinuarAssistindo() {
         let detalhe = null;
         try { detalhe = await getTitulo(item.categoria, item.slug); } catch (_) {}
         const tipo = item.tipo || detalhe?.tipo || "Filme";
+        const ehEpisodio = Boolean(item.serieSlug || item.serieCategoria || String(item.tipo || "").toLowerCase().includes("epis"));
+        const detalheCategoria = item.serieCategoria || item.categoria;
+        const detalheSlug = item.serieSlug || item.slug;
         return {
           ...detalhe,
           ...item,
           tipo,
           titulo: item.titulo || detalhe?.titulo || "Tedflix",
-          imagem: item.imagem || detalhe?.imagem || "",
-          link_assistir: `/titulo/${tipo.toLowerCase() === "serie" ? "serie" : "filme"}/${item.categoria}/${item.slug}`,
+          imagem: item.thumb || item.imagem || detalhe?.imagem || "",
+          link_assistir: `/titulo/${ehEpisodio ? "serie" : (tipo.toLowerCase() === "serie" ? "serie" : "filme")}/${detalheCategoria}/${detalheSlug}`,
           progresso: Number(item.percent || 0),
         };
       }))).filter(Boolean);

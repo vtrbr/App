@@ -14,22 +14,39 @@ object ContinueWatchingStore {
         val categoria: String,
         val slug: String,
         val titulo: String,
+        val filmeId: String = "",
         val positionMs: Long,
         val durationMs: Long,
         val updatedAt: Long,
+        val thumb: String = "",
+        val tipo: String = "",
+        val serieCategoria: String = "",
+        val serieSlug: String = "",
     ) {
         val key: String get() = "$categoria:$slug"
         val percent: Int get() = if (durationMs > 0) ((positionMs * 100L) / durationMs).toInt().coerceIn(0, 99) else 0
     }
 
-    fun save(context: Context, categoria: String, slug: String, titulo: String, positionMs: Long, durationMs: Long) {
+    fun save(
+        context: Context,
+        categoria: String,
+        slug: String,
+        titulo: String,
+        positionMs: Long,
+        durationMs: Long,
+        filmeId: String = "",
+        thumb: String = "",
+        tipo: String = "",
+        serieCategoria: String = "",
+        serieSlug: String = "",
+    ) {
         if (categoria.isBlank() || slug.isBlank() || positionMs < 10_000L || durationMs <= 0L) return
         if (positionMs >= (durationMs * 0.9f).toLong()) {
             remove(context, categoria, slug)
             return
         }
         val entries = read(context).filterNot { it.key == "$categoria:$slug" }.toMutableList()
-        entries.add(0, Entry(categoria, slug, titulo.ifBlank { "Tedflix" }, positionMs, durationMs, System.currentTimeMillis()))
+        entries.add(0, Entry(categoria, slug, titulo.ifBlank { "Tedflix" }, filmeId.ifBlank { slug }, positionMs, durationMs, System.currentTimeMillis(), thumb, tipo, serieCategoria, serieSlug))
         write(context, entries.take(MAX_ITEMS))
     }
 
@@ -47,7 +64,7 @@ object ContinueWatchingStore {
                     val categoria = item.optString("categoria")
                     val slug = item.optString("slug")
                     if (categoria.isBlank() || slug.isBlank()) continue
-                    add(Entry(categoria, slug, item.optString("titulo", "Tedflix"), item.optLong("positionMs"), item.optLong("durationMs"), item.optLong("updatedAt")))
+                    add(Entry(categoria, slug, item.optString("titulo", "Tedflix"), item.optString("filmeId", slug), item.optLong("positionMs"), item.optLong("durationMs"), item.optLong("updatedAt"), item.optString("thumb"), item.optString("tipo"), item.optString("serieCategoria"), item.optString("serieSlug")))
                 }
             }.sortedByDescending { it.updatedAt }
         } catch (_: Throwable) { emptyList() }
@@ -58,9 +75,14 @@ object ContinueWatchingStore {
             put("categoria", item.categoria)
             put("slug", item.slug)
             put("titulo", item.titulo)
+            put("filmeId", item.filmeId)
             put("positionMs", item.positionMs)
             put("durationMs", item.durationMs)
             put("percent", item.percent)
+            put("thumb", item.thumb)
+            put("tipo", item.tipo)
+            put("serieCategoria", item.serieCategoria)
+            put("serieSlug", item.serieSlug)
         }) }
     }.toString()
 
@@ -70,9 +92,14 @@ object ContinueWatchingStore {
                 put("categoria", item.categoria)
                 put("slug", item.slug)
                 put("titulo", item.titulo)
+                put("filmeId", item.filmeId)
                 put("positionMs", item.positionMs)
                 put("durationMs", item.durationMs)
                 put("updatedAt", item.updatedAt)
+                put("thumb", item.thumb)
+                put("tipo", item.tipo)
+                put("serieCategoria", item.serieCategoria)
+                put("serieSlug", item.serieSlug)
             }) }
         }
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().putString(ITEMS, json.toString()).apply()

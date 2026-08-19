@@ -62,8 +62,11 @@ export function ehSerie(item) {
 /** Rota de detalhes de um item da API. */
 export function rotaDetalhe(item) {
   const p = parseLink(item.link_assistir);
-  const tipo = ehSerie(item) ? "serie" : "filme";
-  return `#/titulo/${tipo}/${item.categoria || p.categoria}/${item.slug || p.slug}`;
+  const episodioDeSerie = Boolean(item.serieSlug || item.serieCategoria);
+  const tipo = ehSerie(item) || episodioDeSerie ? "serie" : "filme";
+  const categoria = episodioDeSerie ? item.serieCategoria : (item.categoria || p.categoria);
+  const slug = episodioDeSerie ? item.serieSlug : (item.slug || p.slug);
+  return `#/titulo/${tipo}/${categoria}/${slug}`;
 }
 
 /* ---------------- HOME ---------------- */

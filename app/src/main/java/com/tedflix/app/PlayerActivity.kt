@@ -48,6 +48,11 @@ class PlayerActivity : Activity() {
         const val EXTRA_SLUG = "slug"
         const val EXTRA_TITULO = "titulo"
         const val EXTRA_NEXT_EPISODES = "next_episodes"
+        const val EXTRA_FILME_ID = "filme_id"
+        const val EXTRA_THUMB = "thumb"
+        const val EXTRA_TIPO = "tipo"
+        const val EXTRA_SERIE_CATEGORIA = "serie_categoria"
+        const val EXTRA_SERIE_SLUG = "serie_slug"
         const val PREFS = "tedflix_preferences"
         const val BUFFER_KEY = "buffer"
         private const val API_BASE = "https://tedtv.onrender.com/api"
@@ -73,6 +78,11 @@ class PlayerActivity : Activity() {
     private var currentCategoria = ""
     private var currentSlug = ""
     private var currentTitle = ""
+    private var currentFilmeId = ""
+    private var currentThumb = ""
+    private var currentTipo = ""
+    private var currentSerieCategoria = ""
+    private var currentSerieSlug = ""
     private val nextEpisodes = mutableListOf<NextEpisode>()
     private var controlsVisible = false
     private var playerReady = false
@@ -82,6 +92,10 @@ class PlayerActivity : Activity() {
     private var validationThread: Thread? = null
     private var lastDuration = 0L
     private var positionRestored = false
+    @Volatile private var lastRemoteSaveAt = 0L
+    @Volatile private var remotePositionMs: Long? = null
+    @Volatile private var remotePositionLoaded = false
+    private var remotePositionApplied = false
     private val handler = Handler(Looper.getMainLooper())
     private val hideRunnable = Runnable { setControlsVisible(false) }
     private data class NextEpisode(val categoria: String, val slug: String, val titulo: String)
@@ -169,6 +183,12 @@ class PlayerActivity : Activity() {
         currentCategoria = intent.getStringExtra(EXTRA_CATEGORIA).orEmpty().trim()
         currentSlug = intent.getStringExtra(EXTRA_SLUG).orEmpty().trim()
         currentTitle = intent.getStringExtra(EXTRA_TITULO).orEmpty().trim().ifBlank { "Tedflix" }
+        currentFilmeId = intent.getStringExtra(EXTRA_FILME_ID).orEmpty().trim().ifBlank { currentSlug }
+        currentThumb = intent.getStringExtra(EXTRA_THUMB).orEmpty().trim()
+        currentTipo = intent.getStringExtra(EXTRA_TIPO).orEmpty().trim()
+        currentSerieCategoria = intent.getStringExtra(EXTRA_SERIE_CATEGORIA).orEmpty().trim()
+        currentSerieSlug = intent.getStringExtra(EXTRA_SERIE_SLUG).orEmpty().trim()
+        loadRemoteProgress()
         nextEpisodes.clear()
         val raw = intent.getStringExtra(EXTRA_NEXT_EPISODES).orEmpty().trim()
         if (raw.isBlank() || raw == "[]") return
@@ -200,6 +220,9 @@ class PlayerActivity : Activity() {
         currentCategoria = next.categoria
         currentSlug = next.slug
         currentTitle = next.titulo
+        currentFilmeId = currentSlug
+        currentThumb = ""
+        currentTipo = "episodio"
         titleView.text = currentTitle
         playerReady = false
         updateNextEpisodeButton()
@@ -496,6 +519,7 @@ class PlayerActivity : Activity() {
                     if (state == Player.STATE_READY) {
                         playerReady = true
                         restoreSavedPosition(exo)
+                        applyRemotePositionIfReady(exo)
                         updateNextEpisodeButton()
                         markStep("Player pronto: STATE_READY")
                         loading.visibility = View.GONE
@@ -702,13 +726,85 @@ class PlayerActivity : Activity() {
         }
     }
 
+    private fun loadRemoteProgress() {
+        if (!AuthSession.hasToken() || currentFilmeId.isBlank()) return
+        val filmeId = currentFilmeId
+        Thread {
+            val result = AuthSession.continueWatching()
+            val match = result.value.orEmpty().firstOrNull { it.filmeId == filmeId }
+            remotePositionMs = match?.tempo?.let { parseRemoteTime(it) }
+            remotePositionLoaded = true
+            runOnUiThread { player?.let { applyRemotePositionIfReady(it) } }
+        }.apply { name = "TedflixRemoteProgressLoad"; start() }
+    }
+
+    private fun parseRemoteTime(raw: String): Long? {
+        val parts = raw.trim().split(":")
+        if (parts.size !in 2..3) return raw.toLongOrNull()?.times(1_000L)
+        return try {
+            val values = parts.map { it.toLong() }
+            val seconds = if (values.size == 3) values[0] * 3_600L + values[1] * 60L + values[2] else values[0] * 60L + values[1]
+            seconds * 1_000L
+        } catch (_: Throwable) { null }
+    }
+
+    private fun applyRemotePositionIfReady(exo: ExoPlayer) {
+        if (remotePositionApplied || !remotePositionLoaded) return
+        val target = remotePositionMs ?: return
+        val duration = exo.duration.takeIf { it > 0L } ?: return
+        val safeTarget = target.coerceIn(0L, (duration - 1_000L).coerceAtLeast(0L))
+        if (safeTarget >= 10_000L) {
+            exo.seekTo(safeTarget)
+            remotePositionApplied = true
+            toast("Continuando de ${formatTime(safeTarget)}")
+            Log.d(TAG, "Histórico remoto restaurado: ${safeTarget}ms para $currentFilmeId")
+        }
+    }
+
+    private fun saveRemoteProgress(positionMs: Long) {
+        if (!AuthSession.hasToken() || currentFilmeId.isBlank()) return
+        val now = System.currentTimeMillis()
+        if (now - lastRemoteSaveAt < 4_000L) return
+        lastRemoteSaveAt = now
+        val tempo = formatRemoteTime(positionMs)
+        val filmeId = currentFilmeId
+        val titulo = currentTitle
+        val thumb = currentThumb
+        Thread {
+            val result = AuthSession.saveProgress(filmeId, titulo, tempo, thumb)
+            if (!result.ok) Log.w(TAG, "Falha ao sincronizar histórico remoto: ${result.message}")
+            else Log.d(TAG, "Histórico remoto sincronizado para $filmeId em $tempo")
+        }.apply { name = "TedflixRemoteProgress"; start() }
+    }
+
+    private fun formatRemoteTime(positionMs: Long): String {
+        val totalSeconds = (positionMs / 1_000L).coerceAtLeast(0L)
+        val hours = totalSeconds / 3_600L
+        val minutes = (totalSeconds % 3_600L) / 60L
+        val seconds = totalSeconds % 60L
+        return String.format(Locale.US, "%02d:%02d:%02d", hours, minutes, seconds)
+    }
+
     private fun savePlaybackProgress() {
         val exo = player ?: return
         if (!playerReady) return
         val duration = exo.duration
         val position = exo.currentPosition
         if (duration <= 0L || position <= 0L) return
-        ContinueWatchingStore.save(this, currentCategoria, currentSlug, currentTitle, position, duration)
+        ContinueWatchingStore.save(
+            context = this,
+            categoria = currentCategoria,
+            slug = currentSlug,
+            titulo = currentTitle,
+            positionMs = position,
+            filmeId = currentFilmeId,
+            durationMs = duration,
+            thumb = currentThumb,
+            tipo = currentTipo,
+            serieCategoria = currentSerieCategoria,
+            serieSlug = currentSerieSlug,
+        )
+        saveRemoteProgress(position)
         Log.d(TAG, "Progresso salvo: ${position}ms/${duration}ms para $currentCategoria:$currentSlug")
     }
 

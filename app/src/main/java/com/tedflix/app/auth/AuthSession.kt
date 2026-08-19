@@ -49,6 +49,21 @@ object AuthSession {
         val sentAt: String,
     )
 
+    data class Favorite(
+        val filmeId: String,
+        val titulo: String,
+        val thumb: String,
+        val adicionadoEm: String,
+    )
+
+    data class HistoryItem(
+        val filmeId: String,
+        val titulo: String,
+        val tempo: String,
+        val thumb: String,
+        val ultimoAcesso: String,
+    )
+
     data class Result<T>(
         val ok: Boolean,
         val value: T? = null,
@@ -190,6 +205,48 @@ object AuthSession {
     fun markNotificationRead(id: String): Result<JSONObject> = authenticatedJson(
         "PATCH",
         "/users/me/notifications/${Uri.encode(id)}/read",
+    )
+
+    fun listFavorites(): Result<List<Favorite>> = authenticatedJson("GET", "/api/favorites/list").map { json ->
+        val array = json.optJSONArray("favoritos") ?: json.optJSONArray("favorites") ?: JSONArray()
+        buildList {
+            for (i in 0 until array.length()) {
+                val item = array.optJSONObject(i) ?: continue
+                add(Favorite(item.optString("filmeId"), item.optString("titulo"), item.optString("thumb"), item.optString("adicionadoEm")))
+            }
+        }
+    }
+
+    fun toggleFavorite(filmeId: String, titulo: String, thumb: String): Result<Boolean?> {
+        return authenticatedJson(
+            "POST",
+            "/api/favorites/toggle",
+            JSONObject().put("filmeId", filmeId).put("titulo", titulo).put("thumb", thumb).toString(),
+        ).map { json ->
+            when {
+                json.has("favorito") -> json.optBoolean("favorito")
+                json.has("favorited") -> json.optBoolean("favorited")
+                json.has("isFavorite") -> json.optBoolean("isFavorite")
+                json.has("isFavorito") -> json.optBoolean("isFavorito")
+                else -> null
+            }
+        }
+    }
+
+    fun continueWatching(): Result<List<HistoryItem>> = authenticatedJson("GET", "/api/history/continue-watching").map { json ->
+        val array = json.optJSONArray("continuarAssistindo") ?: json.optJSONArray("history") ?: JSONArray()
+        buildList {
+            for (i in 0 until array.length()) {
+                val item = array.optJSONObject(i) ?: continue
+                add(HistoryItem(item.optString("filmeId"), item.optString("titulo"), item.optString("tempo"), item.optString("thumb"), item.optString("ultimoAcesso")))
+            }
+        }
+    }
+
+    fun saveProgress(filmeId: String, titulo: String, tempo: String, thumb: String): Result<JSONObject> = authenticatedJson(
+        "POST",
+        "/api/history/save-progress",
+        JSONObject().put("filmeId", filmeId).put("titulo", titulo).put("tempo", tempo).put("thumb", thumb).toString(),
     )
 
     fun logout(): Result<JSONObject> {

@@ -90,6 +90,19 @@ export default async function paginaConfiguracoes(raiz) {
     }, "Abrir minha conta"),
   ]);
 
+  const blocoFavoritos = el("section", { class: "cfg-bloco" }, [
+    el("h2", {}, "Favoritos"),
+    el("p", { class: "sub" }, "Acesse os filmes e séries que você salvou para assistir depois."),
+    el("button", {
+      class: "btn ghost",
+      type: "button",
+      onclick: () => {
+        if (window.AndroidPlayer && typeof window.AndroidPlayer.openFavorites === "function") window.AndroidPlayer.openFavorites();
+        else alert("Os favoritos estão disponíveis no aplicativo Android.");
+      },
+    }, "Abrir favoritos"),
+  ]);
+
   const blocoFontes = el("section", { class: "cfg-bloco" }, [
     el("h2", {}, "Fontes de conteúdo"),
     el("p", { class: "sub" }, "Escolha o servidor principal, uma fonte alternativa ou consulte todas as fontes cadastradas."),
@@ -111,6 +124,7 @@ export default async function paginaConfiguracoes(raiz) {
     blocoPerfil,
     blocoConta,
     blocoRede,
+    blocoFavoritos,
     grupo(
       "Buffer",
       "Quanto vídeo é carregado à frente. Mais buffer = menos travadas em rede instável.",

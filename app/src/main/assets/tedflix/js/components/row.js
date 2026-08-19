@@ -13,27 +13,50 @@ export function fileira({ titulo, verTudo, carregar, limite = 20 }) {
   let arrastando = false;
   let inicioX = 0;
   let scrollInicial = 0;
+  let ponteiroAtivo = null;
+  let suprimirCliqueAte = 0;
+
+  const finalizarArraste = (evento) => {
+    if (ponteiroAtivo !== null && evento?.pointerId != null && evento.pointerId !== ponteiroAtivo) return;
+    if (arrastando) suprimirCliqueAte = Date.now() + 420;
+    pressionado = false;
+    ponteiroAtivo = null;
+    rail.classList.remove("arrastando");
+  };
+
   rail.addEventListener("pointerdown", (evento) => {
+    if (evento.pointerType === "mouse" && evento.button !== 0) return;
     pressionado = true;
     arrastando = false;
+    ponteiroAtivo = evento.pointerId;
     inicioX = evento.clientX;
     scrollInicial = rail.scrollLeft;
-    rail.setPointerCapture?.(evento.pointerId);
+    try { rail.setPointerCapture(evento.pointerId); } catch (_) {}
   });
+
   rail.addEventListener("pointermove", (evento) => {
-    if (!pressionado) return;
+    if (!pressionado || evento.pointerId !== ponteiroAtivo) return;
     const delta = evento.clientX - inicioX;
-    if (Math.abs(delta) > 6) arrastando = true;
+    if (!arrastando && Math.abs(delta) > 8) {
+      arrastando = true;
+      rail.classList.add("arrastando");
+    }
     if (arrastando) {
       evento.preventDefault();
+      evento.stopPropagation();
       rail.scrollLeft = scrollInicial - delta;
     }
-  });
-  const finalizarArraste = () => { pressionado = false; setTimeout(() => { arrastando = false; }, 0); };
+  }, { passive: false });
+
   rail.addEventListener("pointerup", finalizarArraste);
   rail.addEventListener("pointercancel", finalizarArraste);
+  rail.addEventListener("lostpointercapture", () => finalizarArraste());
   rail.addEventListener("click", (evento) => {
-    if (arrastando) { evento.preventDefault(); evento.stopPropagation(); }
+    if (Date.now() < suprimirCliqueAte) {
+      evento.preventDefault();
+      evento.stopImmediatePropagation();
+      suprimirCliqueAte = 0;
+    }
   }, true);
   for (let i = 0; i < 6; i++) rail.append(skeletonCard());
 

@@ -53,6 +53,47 @@ export function hero(itens) {
 
   mostrar(0);
 
+  let arrastando = false;
+  let pressionado = false;
+  let inicioX = 0;
+  let suprimirCliqueAte = 0;
+  raiz.addEventListener("pointerdown", (evento) => {
+    if (evento.target.closest("a, button")) return;
+    if (evento.pointerType === "mouse" && evento.button !== 0) return;
+    pressionado = true;
+    arrastando = false;
+    inicioX = evento.clientX;
+    parar();
+    try { raiz.setPointerCapture(evento.pointerId); } catch (_) {}
+  });
+  raiz.addEventListener("pointermove", (evento) => {
+    if (!pressionado) return;
+    if (Math.abs(evento.clientX - inicioX) > 12) {
+      arrastando = true;
+      evento.preventDefault();
+    }
+  }, { passive: false });
+  const terminarSwipe = (evento) => {
+    if (!pressionado) return;
+    const delta = evento.clientX - inicioX;
+    if (arrastando && Math.abs(delta) > 34) {
+      mostrar(delta < 0 ? atual + 1 : atual - 1 + itens.length);
+      suprimirCliqueAte = Date.now() + 420;
+    }
+    pressionado = false;
+    arrastando = false;
+    rodar();
+  };
+  raiz.addEventListener("pointerup", terminarSwipe);
+  raiz.addEventListener("pointercancel", terminarSwipe);
+  raiz.addEventListener("click", (evento) => {
+    if (Date.now() < suprimirCliqueAte) {
+      evento.preventDefault();
+      evento.stopImmediatePropagation();
+      suprimirCliqueAte = 0;
+    }
+  }, true);
+
   let timer = null;
   const rodar = () => {
     parar();
