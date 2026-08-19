@@ -2,10 +2,13 @@ package com.tedflix.app
 
 import android.annotation.SuppressLint
 import android.app.Activity
+import android.app.AlertDialog
 import android.content.Context
 import android.content.Intent
-import android.net.Uri
+import android.graphics.BitmapFactory
 import android.graphics.Color
+import android.graphics.drawable.GradientDrawable
+import android.net.Uri
 import android.os.Bundle
 import android.util.Log
 import android.view.Gravity
@@ -16,6 +19,7 @@ import android.webkit.WebResourceRequest
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import android.widget.Button
+import android.widget.EditText
 import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.ProgressBar
@@ -29,6 +33,8 @@ import com.tedflix.app.auth.FavoritesActivity
 import com.tedflix.app.auth.NotificationActivity
 import com.tedflix.app.NotificationHelper
 import com.tedflix.app.requestNotificationPermissionIfNeeded
+import java.net.HttpURLConnection
+import java.net.URL
 
 @UnstableApi
 class MainActivity : Activity() {
@@ -37,7 +43,21 @@ class MainActivity : Activity() {
         const val EXTRA_OPEN_FAVORITE_CATEGORY = "open_favorite_category"
         const val EXTRA_OPEN_FAVORITE_SLUG = "open_favorite_slug"
         const val EXTRA_OPEN_FAVORITE_TYPE = "open_favorite_type"
+        private const val PROFILE_PREFS = "tedflix_local_profiles"
+        private val DEFAULT_AVATAR_SEEDS = listOf(
+            "tedflix-avatar-01", "tedflix-avatar-02", "tedflix-avatar-03",
+            "tedflix-avatar-04", "tedflix-avatar-05", "tedflix-avatar-06",
+            "tedflix-avatar-07", "tedflix-avatar-08", "tedflix-avatar-09",
+            "tedflix-avatar-10", "tedflix-avatar-11", "tedflix-avatar-12",
+        )
     }
+
+    private data class LocalProfile(
+        val id: String,
+        val name: String,
+        val avatarSeed: String,
+        val avatarStyle: String = "fun-emoji",
+    )
 
     private lateinit var webView: WebView
     private var playerWasOpened = false
@@ -76,100 +96,253 @@ class MainActivity : Activity() {
     }
 
     private fun showProfileChooser() {
-        val name = AuthSession.cachedUser()?.username?.ifBlank { "Meu perfil" } ?: "Meu perfil"
-        val root = android.widget.FrameLayout(this).apply {
-            setBackgroundColor(Color.rgb(5, 6, 9))
-        }
+        val profiles = loadProfiles()
+        val selectedId = getSharedPreferences(PROFILE_PREFS, Context.MODE_PRIVATE)
+            .getString("selected_profile_id", profiles.firstOrNull()?.id.orEmpty()).orEmpty()
+        val root = android.widget.FrameLayout(this).apply { setBackgroundColor(Color.rgb(5, 6, 9)) }
         val banner = ImageView(this).apply {
             setImageResource(com.tedflix.app.R.drawable.tedflix_auth_banner)
             scaleType = ImageView.ScaleType.CENTER_CROP
-            alpha = 0.82f
+            alpha = 0.84f
         }
         root.addView(banner, android.widget.FrameLayout.LayoutParams(-1, -1))
         val shade = View(this).apply {
-            background = android.graphics.drawable.GradientDrawable(
-                android.graphics.drawable.GradientDrawable.Orientation.TOP_BOTTOM,
-                intArrayOf(Color.argb(120, 5, 6, 9), Color.rgb(5, 6, 9)),
+            background = GradientDrawable(
+                GradientDrawable.Orientation.TOP_BOTTOM,
+                intArrayOf(Color.argb(138, 5, 6, 9), Color.argb(232, 5, 6, 9), Color.argb(248, 5, 6, 9)),
             )
         }
         root.addView(shade, android.widget.FrameLayout.LayoutParams(-1, -1))
 
+        val scroll = ScrollView(this).apply { isFillViewport = true }
         val content = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             gravity = Gravity.CENTER_HORIZONTAL
-            setPadding(dp(24), dp(40), dp(24), dp(34))
+            setPadding(dp(20), dp(28), dp(20), dp(28))
         }
-        val logo = ImageView(this).apply {
+        content.addView(ImageView(this).apply {
             setImageResource(com.tedflix.app.R.drawable.tedflix_auth_logo)
             scaleType = ImageView.ScaleType.CENTER_INSIDE
             contentDescription = "Tedflix"
-        }
-        content.addView(logo, LinearLayout.LayoutParams(dp(150), dp(54)).apply { bottomMargin = dp(42) })
+        }, LinearLayout.LayoutParams(dp(150), dp(52)).apply { bottomMargin = dp(22) })
         content.addView(TextView(this).apply {
             text = "Quem está assistindo?"
             textSize = 28f
             setTextColor(Color.WHITE)
             gravity = Gravity.CENTER
             typeface = android.graphics.Typeface.DEFAULT_BOLD
-        }, LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = dp(28) })
-
-        val card = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            gravity = Gravity.CENTER_HORIZONTAL
-            setPadding(dp(12), dp(12), dp(12), dp(16))
-            background = android.graphics.drawable.GradientDrawable().apply {
-                setColor(Color.argb(210, 18, 19, 24))
-                cornerRadius = dp(18).toFloat()
-                setStroke(dp(1), Color.argb(90, 255, 255, 255))
-            }
-            elevation = dp(8).toFloat()
-        }
-        val avatar = ImageView(this).apply {
-            setImageResource(com.tedflix.app.R.drawable.tedflix_auth_banner)
-            scaleType = ImageView.ScaleType.CENTER_CROP
-            contentDescription = name
-            background = android.graphics.drawable.GradientDrawable().apply {
-                cornerRadius = dp(14).toFloat()
-                setStroke(dp(2), Color.rgb(229, 9, 20))
-            }
-            clipToOutline = true
-            setOnClickListener {
-                content.visibility = View.GONE
-                shade.alpha = 0.98f
-                val loader = LinearLayout(this@MainActivity).apply {
-                    orientation = LinearLayout.VERTICAL
-                    gravity = Gravity.CENTER
-                    addView(ProgressBar(this@MainActivity).apply {
-                        indeterminateTintList = android.content.res.ColorStateList.valueOf(Color.rgb(229, 9, 20))
-                    }, LinearLayout.LayoutParams(dp(48), dp(48)))
-                    addView(TextView(this@MainActivity).apply {
-                        text = "Carregando seu perfil..."
-                        textSize = 14f
-                        setTextColor(Color.WHITE)
-                        gravity = Gravity.CENTER
-                    }, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(16) })
-                }
-                root.addView(loader, android.widget.FrameLayout.LayoutParams(-1, -1))
-                root.postDelayed({ setupWebView() }, 320L)
-            }
-        }
-        card.addView(avatar, LinearLayout.LayoutParams(dp(142), dp(174)))
-        card.addView(TextView(this).apply {
-            text = name
-            textSize = 16f
-            setTextColor(Color.WHITE)
-            gravity = Gravity.CENTER
-            typeface = android.graphics.Typeface.DEFAULT_BOLD
-        }, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(12) })
-        content.addView(card, LinearLayout.LayoutParams(dp(190), -2))
+        }, LinearLayout.LayoutParams(-1, -2))
         content.addView(TextView(this).apply {
-            text = "Toque no seu perfil para entrar"
-            textSize = 13f
+            text = "Escolha seu avatar para continuar"
+            textSize = 16f
             setTextColor(Color.LTGRAY)
             gravity = Gravity.CENTER
-        }, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(22) })
-        root.addView(content, android.widget.FrameLayout.LayoutParams(-1, -1))
+        }, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(8); bottomMargin = dp(24) })
+
+        val grid = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; gravity = Gravity.CENTER_HORIZONTAL }
+        profiles.chunked(3).forEach { rowProfiles ->
+            val row = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER }
+            rowProfiles.forEach { profile ->
+                row.addView(createProfileTile(profile, profile.id == selectedId) {
+                    selectProfileAndOpen(root, content, shade, profile)
+                }, LinearLayout.LayoutParams(0, dp(142), 1f).apply {
+                    leftMargin = dp(3); rightMargin = dp(3); bottomMargin = dp(14)
+                })
+            }
+            repeat(3 - rowProfiles.size) { row.addView(View(this), LinearLayout.LayoutParams(0, dp(142), 1f)) }
+            grid.addView(row, LinearLayout.LayoutParams(-1, -2))
+        }
+        content.addView(grid, LinearLayout.LayoutParams(-1, -2))
+        content.addView(TextView(this).apply {
+            text = "＋\nAdicionar perfil"
+            textSize = 16f
+            setTextColor(Color.LTGRAY)
+            gravity = Gravity.CENTER
+            setPadding(0, dp(10), 0, dp(8))
+            setOnClickListener { showAddProfileDialog() }
+        }, LinearLayout.LayoutParams(-1, dp(92)))
+        content.addView(Button(this).apply {
+            text = "Gerenciar perfis"
+            setAllCaps(false)
+            textSize = 16f
+            setTextColor(Color.LTGRAY)
+            background = GradientDrawable().apply {
+                setColor(Color.argb(80, 8, 8, 12)); cornerRadius = dp(10).toFloat()
+                setStroke(dp(1), Color.argb(115, 255, 255, 255))
+            }
+            setOnClickListener { showManageProfilesDialog() }
+        }, LinearLayout.LayoutParams(dp(300), dp(54)))
+        scroll.addView(content)
+        root.addView(scroll, android.widget.FrameLayout.LayoutParams(-1, -1))
         setContentView(root)
+    }
+
+    private fun createProfileTile(profile: LocalProfile, selected: Boolean, onClick: () -> Unit): View {
+        val cell = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL; gravity = Gravity.CENTER_HORIZONTAL
+            isClickable = true; isFocusable = true; setOnClickListener { onClick() }
+        }
+        val frame = android.widget.FrameLayout(this)
+        val avatar = ImageView(this).apply {
+            tag = profile.avatarSeed; scaleType = ImageView.ScaleType.CENTER_CROP
+            contentDescription = profile.name; clipToOutline = true
+            background = GradientDrawable().apply {
+                shape = GradientDrawable.OVAL; setColor(Color.argb(92, 20, 20, 25))
+                setStroke(if (selected) dp(3) else dp(1), if (selected) Color.rgb(229, 9, 20) else Color.argb(90, 255, 255, 255))
+            }
+        }
+        frame.addView(avatar, android.widget.FrameLayout.LayoutParams(dp(94), dp(94), Gravity.CENTER))
+        if (selected) frame.addView(TextView(this).apply {
+            text = "✓"; textSize = 16f; gravity = Gravity.CENTER; setTextColor(Color.WHITE)
+            background = GradientDrawable().apply { shape = GradientDrawable.OVAL; setColor(Color.rgb(229, 9, 20)) }
+        }, android.widget.FrameLayout.LayoutParams(dp(28), dp(28), Gravity.TOP or Gravity.END))
+        cell.addView(frame, LinearLayout.LayoutParams(dp(104), dp(100)))
+        cell.addView(TextView(this).apply {
+            text = profile.name; textSize = 14f; setTextColor(if (selected) Color.WHITE else Color.LTGRAY)
+            gravity = Gravity.CENTER; maxLines = 1; ellipsize = android.text.TextUtils.TruncateAt.END
+            if (selected) typeface = android.graphics.Typeface.DEFAULT_BOLD
+        }, LinearLayout.LayoutParams(-1, dp(28)))
+        loadDiceBearAvatar(avatar, profile.avatarSeed)
+        return cell
+    }
+
+    private fun selectProfileAndOpen(root: android.widget.FrameLayout, content: LinearLayout, shade: View, profile: LocalProfile) {
+        getSharedPreferences(PROFILE_PREFS, Context.MODE_PRIVATE).edit().putString("selected_profile_id", profile.id).apply()
+        content.visibility = View.GONE; shade.alpha = 0.98f
+        val loader = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL; gravity = Gravity.CENTER
+            addView(ProgressBar(this@MainActivity).apply {
+                indeterminateTintList = android.content.res.ColorStateList.valueOf(Color.rgb(229, 9, 20))
+            }, LinearLayout.LayoutParams(dp(48), dp(48)))
+            addView(TextView(this@MainActivity).apply {
+                text = "Carregando ${profile.name}..."; textSize = 14f; setTextColor(Color.WHITE); gravity = Gravity.CENTER
+            }, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(16) })
+        }
+        root.addView(loader, android.widget.FrameLayout.LayoutParams(-1, -1))
+        root.postDelayed({ setupWebView() }, 320L)
+    }
+
+    private fun loadProfiles(): MutableList<LocalProfile> {
+        val prefs = getSharedPreferences(PROFILE_PREFS, Context.MODE_PRIVATE)
+        val profiles = mutableListOf<LocalProfile>()
+        try {
+            val array = org.json.JSONArray(prefs.getString("profiles_json", "").orEmpty())
+            for (i in 0 until array.length()) {
+                val item = array.optJSONObject(i) ?: continue
+                val id = item.optString("id").trim(); val name = item.optString("name").trim(); val seed = item.optString("avatarSeed").trim()
+                if (id.isNotBlank() && name.isNotBlank() && seed.isNotBlank()) profiles += LocalProfile(id, name, seed, item.optString("avatarStyle").ifBlank { "fun-emoji" })
+            }
+        } catch (_: Throwable) {}
+        if (profiles.isEmpty()) {
+            val accountName = AuthSession.cachedUser()?.username?.ifBlank { "Vitor" } ?: "Vitor"
+            DEFAULT_AVATAR_SEEDS.take(9).forEachIndexed { index, seed -> profiles += LocalProfile("profile-${index + 1}", if (index == 0) accountName else "Perfil ${index + 1}", seed) }
+            saveProfiles(profiles)
+        }
+        return profiles
+    }
+
+    private fun saveProfiles(profiles: List<LocalProfile>) {
+        val array = org.json.JSONArray()
+        profiles.forEach { profile -> array.put(org.json.JSONObject().put("id", profile.id).put("name", profile.name).put("avatarSeed", profile.avatarSeed).put("avatarStyle", profile.avatarStyle)) }
+        getSharedPreferences(PROFILE_PREFS, Context.MODE_PRIVATE).edit().putString("profiles_json", array.toString()).apply()
+    }
+
+    private fun avatarUrl(seed: String): String = "https://api.dicebear.com/10.x/fun-emoji/png?seed=${Uri.encode(seed)}&size=256"
+
+    private fun loadDiceBearAvatar(image: ImageView, seed: String) {
+        Thread {
+            try {
+                val connection = URL(avatarUrl(seed)).openConnection() as HttpURLConnection
+                connection.connectTimeout = 8_000; connection.readTimeout = 8_000; connection.instanceFollowRedirects = true
+                val bitmap = connection.inputStream.use { BitmapFactory.decodeStream(it) }; connection.disconnect()
+                if (bitmap != null) runOnUiThread { if (image.tag == seed) image.setImageBitmap(bitmap) }
+            } catch (error: Throwable) { Log.w("TedflixProfiles", "Falha ao carregar avatar DiceBear $seed", error) }
+        }.apply { name = "TedflixAvatar-$seed"; start() }
+    }
+
+    private fun showAddProfileDialog() {
+        val panel = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(dp(24), dp(8), dp(24), 0) }
+        val selectedSeed = arrayOf(DEFAULT_AVATAR_SEEDS[loadProfiles().size % DEFAULT_AVATAR_SEEDS.size])
+        val preview = ImageView(this).apply { scaleType = ImageView.ScaleType.CENTER_CROP; background = GradientDrawable().apply { shape = GradientDrawable.OVAL; setColor(Color.LTGRAY) } }
+        panel.addView(preview, LinearLayout.LayoutParams(dp(92), dp(92)).apply { gravity = Gravity.CENTER_HORIZONTAL; bottomMargin = dp(8) })
+        loadDiceBearAvatar(preview, selectedSeed[0])
+        panel.addView(Button(this).apply {
+            text = "Escolher outro avatar"; setAllCaps(false)
+            setOnClickListener { showAvatarPicker(selectedSeed[0]) { seed -> selectedSeed[0] = seed; loadDiceBearAvatar(preview, seed) } }
+        }, LinearLayout.LayoutParams(-1, dp(46)))
+        val nameInput = EditText(this).apply { hint = "Nome do perfil"; setSingleLine(true) }
+        panel.addView(nameInput, LinearLayout.LayoutParams(-1, dp(54)).apply { topMargin = dp(8) })
+        val dialog = AlertDialog.Builder(this).setTitle("Criar perfil").setView(panel).setNegativeButton("Cancelar", null).setPositiveButton("Continuar", null).create()
+        dialog.setOnShowListener {
+            dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {
+                val name = nameInput.text.toString().trim()
+                if (name.isBlank()) { nameInput.error = "Informe um nome"; return@setOnClickListener }
+                val profiles = loadProfiles()
+                if (profiles.size >= DEFAULT_AVATAR_SEEDS.size) { Toast.makeText(this, "Limite de 12 perfis atingido.", Toast.LENGTH_SHORT).show(); return@setOnClickListener }
+                profiles += LocalProfile("profile-${System.currentTimeMillis()}", name, selectedSeed[0]); saveProfiles(profiles); dialog.dismiss(); showProfileChooser()
+            }
+        }
+        dialog.show()
+    }
+
+    private fun showAvatarPicker(currentSeed: String, onPick: (String) -> Unit) {
+        val grid = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(dp(18), 0, dp(18), 0) }
+        var picker: AlertDialog? = null
+        DEFAULT_AVATAR_SEEDS.chunked(4).forEach { seeds ->
+            val row = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER }
+            seeds.forEach { seed ->
+                val avatar = ImageView(this).apply {
+                    scaleType = ImageView.ScaleType.CENTER_CROP
+                    background = GradientDrawable().apply { shape = GradientDrawable.OVAL; setColor(Color.argb(70, 30, 30, 35)); setStroke(if (seed == currentSeed) dp(3) else dp(1), if (seed == currentSeed) Color.rgb(229, 9, 20) else Color.GRAY) }
+                    setOnClickListener { onPick(seed); picker?.dismiss() }
+                }
+                loadDiceBearAvatar(avatar, seed)
+                row.addView(avatar, LinearLayout.LayoutParams(dp(68), dp(68)).apply { leftMargin = dp(5); rightMargin = dp(5); bottomMargin = dp(10) })
+            }
+            grid.addView(row)
+        }
+        picker = AlertDialog.Builder(this).setTitle("Escolha seu avatar").setView(ScrollView(this).apply { addView(grid) }).setNegativeButton("Cancelar", null).create()
+        picker.show()
+    }
+
+    private fun showManageProfilesDialog() {
+        val panel = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(dp(16), 0, dp(16), 0) }
+        val profiles = loadProfiles()
+        profiles.forEach { profile ->
+            val row = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL; setPadding(0, dp(6), 0, dp(6)) }
+            val avatar = ImageView(this).apply { scaleType = ImageView.ScaleType.CENTER_CROP; background = GradientDrawable().apply { shape = GradientDrawable.OVAL } }
+            loadDiceBearAvatar(avatar, profile.avatarSeed)
+            row.addView(avatar, LinearLayout.LayoutParams(dp(54), dp(54)))
+            row.addView(TextView(this).apply { text = profile.name; textSize = 15f; setTextColor(Color.WHITE); setPadding(dp(10), 0, dp(4), 0) }, LinearLayout.LayoutParams(0, -2, 1f))
+            row.addView(Button(this).apply { text = "Editar"; setAllCaps(false); setOnClickListener { showEditProfileDialog(profile) } }, LinearLayout.LayoutParams(dp(76), dp(44)))
+            if (profiles.size > 1) row.addView(Button(this).apply { text = "Excluir"; setAllCaps(false); setOnClickListener { confirmDeleteProfile(profile) } }, LinearLayout.LayoutParams(dp(82), dp(44)))
+            panel.addView(row)
+        }
+        AlertDialog.Builder(this).setTitle("Gerenciar perfis").setView(ScrollView(this).apply { addView(panel) }).setNegativeButton("Fechar", null).setPositiveButton("Adicionar perfil") { _, _ -> showAddProfileDialog() }.show()
+    }
+
+    private fun showEditProfileDialog(profile: LocalProfile) {
+        val input = EditText(this).apply { setSingleLine(true); setText(profile.name); hint = "Nome do perfil" }
+        AlertDialog.Builder(this).setTitle("Editar perfil").setView(input).setNegativeButton("Cancelar", null).setPositiveButton("Salvar") { _, _ ->
+            val name = input.text.toString().trim().ifBlank { profile.name }
+            saveProfiles(loadProfiles().map { if (it.id == profile.id) it.copy(name = name) else it }); showManageProfilesDialog()
+        }.setNeutralButton("Alterar avatar") { _, _ -> showAvatarPicker(profile.avatarSeed) { seed ->
+            saveProfiles(loadProfiles().map { if (it.id == profile.id) it.copy(avatarSeed = seed) else it }); showProfileChooser()
+        } }.show()
+    }
+
+    private fun confirmDeleteProfile(profile: LocalProfile) {
+        AlertDialog.Builder(this).setTitle("Excluir perfil?").setMessage("Tem certeza que deseja excluir ${profile.name}?").setNegativeButton("Cancelar", null).setPositiveButton("Excluir") { _, _ ->
+            val profiles = loadProfiles().filterNot { it.id == profile.id }.toMutableList(); saveProfiles(profiles)
+            val prefs = getSharedPreferences(PROFILE_PREFS, Context.MODE_PRIVATE)
+            if (prefs.getString("selected_profile_id", "") == profile.id) prefs.edit().putString("selected_profile_id", profiles.firstOrNull()?.id.orEmpty()).apply()
+            showManageProfilesDialog()
+        }.show()
+    }
+
+    private fun currentProfileName(): String {
+        val profiles = loadProfiles(); val selected = getSharedPreferences(PROFILE_PREFS, Context.MODE_PRIVATE).getString("selected_profile_id", "")
+        return profiles.firstOrNull { it.id == selected }?.name ?: profiles.firstOrNull()?.name ?: "Meu perfil"
     }
 
     @SuppressLint("SetJavaScriptEnabled")
@@ -350,7 +523,7 @@ class MainActivity : Activity() {
         }
 
         @JavascriptInterface
-        fun getProfileName(): String = AuthSession.cachedUser()?.username?.ifBlank { "Meu perfil" } ?: "Meu perfil"
+        fun getProfileName(): String = activity.currentProfileName()
 
         @JavascriptInterface
         fun openNotifications() {
