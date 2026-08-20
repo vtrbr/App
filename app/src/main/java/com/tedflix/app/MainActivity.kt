@@ -231,8 +231,11 @@ class MainActivity : Activity() {
         if (selected) frame.addView(TextView(this).apply {
             text = "✓"; textSize = 16f; gravity = Gravity.CENTER; setTextColor(Color.WHITE)
             background = GradientDrawable().apply { shape = GradientDrawable.OVAL; setColor(Color.rgb(229, 9, 20)) }
-        }, android.widget.FrameLayout.LayoutParams(dp(28), dp(28), Gravity.TOP or Gravity.END))
-        cell.addView(frame, LinearLayout.LayoutParams(dp(104), dp(106)))
+        }, android.widget.FrameLayout.LayoutParams(dp(28), dp(28), Gravity.TOP or Gravity.END).apply {
+            topMargin = dp(6)
+            rightMargin = dp(2)
+        })
+        cell.addView(frame, LinearLayout.LayoutParams(dp(104), dp(106)).apply { topMargin = dp(6) })
         cell.addView(TextView(this).apply {
             text = profile.name; textSize = 14f; setTextColor(if (selected) Color.WHITE else Color.LTGRAY)
             gravity = Gravity.CENTER; maxLines = 1; ellipsize = android.text.TextUtils.TruncateAt.END
@@ -477,18 +480,39 @@ class MainActivity : Activity() {
                 }
             }
             addJavascriptInterface(AndroidPlayerBridge(this@MainActivity), "AndroidPlayer")
-            val favoriteTitle = intent.getStringExtra(EXTRA_OPEN_FAVORITE_TITLE).orEmpty()
-            val favoriteCategory = intent.getStringExtra(EXTRA_OPEN_FAVORITE_CATEGORY).orEmpty()
-            val favoriteSlug = intent.getStringExtra(EXTRA_OPEN_FAVORITE_SLUG).orEmpty()
-            val favoriteType = intent.getStringExtra(EXTRA_OPEN_FAVORITE_TYPE).orEmpty().lowercase().let { if (it.contains("séri") || it.contains("serie")) "serie" else "filme" }
-            val route = when {
-                favoriteCategory.isNotBlank() && favoriteSlug.isNotBlank() -> "#/titulo/$favoriteType/${Uri.encode(favoriteCategory)}/${Uri.encode(favoriteSlug)}"
-                favoriteTitle.isNotBlank() -> "#/favorito?titulo=${Uri.encode(favoriteTitle)}"
-                else -> ""
-            }
-            loadUrl("file:///android_asset/tedflix/index.html$route")
+            loadUrl("file:///android_asset/tedflix/index.html${routeFromIntent(intent)}")
         }
         setContentView(webView)
+    }
+
+    private fun routeFromIntent(sourceIntent: Intent): String {
+        val favoriteTitle = sourceIntent.getStringExtra(EXTRA_OPEN_FAVORITE_TITLE).orEmpty().trim()
+        val favoriteCategory = sourceIntent.getStringExtra(EXTRA_OPEN_FAVORITE_CATEGORY).orEmpty().trim()
+        val favoriteSlug = sourceIntent.getStringExtra(EXTRA_OPEN_FAVORITE_SLUG).orEmpty().trim()
+        val favoriteType = sourceIntent.getStringExtra(EXTRA_OPEN_FAVORITE_TYPE).orEmpty().lowercase().let {
+            if (it.contains("séri") || it.contains("serie")) "serie" else "filme"
+        }
+        return when {
+            favoriteCategory.isNotBlank() && favoriteSlug.isNotBlank() ->
+                "#/titulo/$favoriteType/${Uri.encode(favoriteCategory)}/${Uri.encode(favoriteSlug)}"
+            favoriteTitle.isNotBlank() -> "#/favorito?titulo=${Uri.encode(favoriteTitle)}"
+            else -> ""
+        }
+    }
+
+    private fun loadRouteFromIntent(sourceIntent: Intent) {
+        webView.loadUrl("file:///android_asset/tedflix/index.html${routeFromIntent(sourceIntent)}")
+    }
+
+    override fun onNewIntent(intent: Intent?) {
+        super.onNewIntent(intent)
+        if (intent == null) return
+        setIntent(intent)
+        if (!::webView.isInitialized) {
+            setupWebView()
+            return
+        }
+        webView.post { loadRouteFromIntent(intent) }
     }
 
     private fun handleSessionExpired() {

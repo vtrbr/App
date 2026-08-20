@@ -167,6 +167,7 @@ class FavoritesActivity : Activity() {
             else -> "filme"
         }
         startActivity(Intent(this, MainActivity::class.java).apply {
+            addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP)
             putExtra(MainActivity.EXTRA_OPEN_FAVORITE_TITLE, favorite.titulo)
             putExtra(MainActivity.EXTRA_OPEN_FAVORITE_CATEGORY, category)
             putExtra(MainActivity.EXTRA_OPEN_FAVORITE_SLUG, slug)

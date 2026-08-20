@@ -74,6 +74,7 @@ class PlayerActivity : Activity() {
     private lateinit var playButton: Button
     private lateinit var titleView: TextView
     private lateinit var loading: ProgressBar
+    private lateinit var loadingPanel: LinearLayout
     private var player: ExoPlayer? = null
     private var currentCategoria = ""
     private var currentSlug = ""
@@ -260,7 +261,7 @@ class PlayerActivity : Activity() {
         titleView.text = currentTitle
         playerReady = false
         updateNextEpisodeButton()
-        loading.visibility = View.VISIBLE
+        setLoadingVisible(true)
         setControlsVisible(false)
         handler.removeCallbacks(progressRunnable)
         playerView.player = null
@@ -301,8 +302,25 @@ class PlayerActivity : Activity() {
         buildBottomControls()
         markStep("controles inferiores criados")
 
-        loading = ProgressBar(this).apply { visibility = View.VISIBLE }
-        overlay.addView(loading, centeredParams(54, 54))
+        loadingPanel = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            gravity = Gravity.CENTER
+            isClickable = true
+            elevation = dp(8).toFloat()
+            background = gradient(Color.argb(235, 13, 14, 20), 1f, 1f, 1f, 1f)
+        }
+        loading = ProgressBar(this).apply {
+            visibility = View.VISIBLE
+            indeterminateTintList = android.content.res.ColorStateList.valueOf(Color.rgb(229, 28, 42))
+        }
+        loadingPanel.addView(loading, LinearLayout.LayoutParams(dp(42), dp(42)))
+        loadingPanel.addView(TextView(this).apply {
+            text = "Carregando vídeo..."
+            textSize = 13f
+            setTextColor(Color.WHITE)
+            gravity = Gravity.CENTER
+        }, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(10) })
+        overlay.addView(loadingPanel, FrameLayout.LayoutParams(dp(220), dp(122), Gravity.CENTER))
         markStep("loading criado")
         setContentView(root)
         markStep("setContentView concluído")
@@ -556,16 +574,19 @@ class PlayerActivity : Activity() {
                         applyRemotePositionIfReady(exo)
                         updateNextEpisodeButton()
                         markStep("Player pronto: STATE_READY")
-                        loading.visibility = View.GONE
+                        setLoadingVisible(false)
                         setControlsVisible(true)
                         scheduleHide()
-                    } else if (!playerReady) {
-                        // Antes do primeiro STATE_READY, o loader permanece visível
-                        // e os controles continuam ocultos.
-                        loading.visibility = View.VISIBLE
-                        setControlsVisible(false)
+                    } else if (state == Player.STATE_BUFFERING || state == Player.STATE_IDLE) {
+                        // Durante a leitura do manifesto ou dos segmentos, o painel
+                        // central reaparece sem remover a barra de voltar.
+                        setLoadingVisible(true)
+                        if (!playerReady) setControlsVisible(false)
                     }
-                    if (state == Player.STATE_ENDED) setControlsVisible(true)
+                    if (state == Player.STATE_ENDED) {
+                        setLoadingVisible(false)
+                        setControlsVisible(true)
+                    }
                 }
 
                 override fun onIsPlayingChanged(isPlaying: Boolean) {
@@ -633,12 +654,23 @@ class PlayerActivity : Activity() {
     private class StreamValidationException(message: String, val details: String) : IllegalStateException(message)
 
     private fun reloadStream() {
+        if (!isActivityAlive()) return
         playerReady = false
-        loading.visibility = View.VISIBLE
+        positionRestored = false
+        remotePositionApplied = false
+        setLoadingVisible(true)
         setControlsVisible(false)
-        player?.seekTo(0)
-        player?.prepare()
-        player?.playWhenReady = true
+        player?.let { exo ->
+            try {
+                exo.stop()
+                exo.seekTo(0)
+                exo.prepare()
+                exo.playWhenReady = true
+            } catch (error: Throwable) {
+                Log.e(TAG, "Falha ao recarregar o stream", error)
+                showDiagnosticScreen("Recarregamento do stream", error)
+            }
+        }
     }
 
     private fun togglePlay() {
@@ -875,7 +907,7 @@ class PlayerActivity : Activity() {
     }
 
     private fun showError(message: String) {
-        if (::loading.isInitialized) loading.visibility = View.GONE
+        setLoadingVisible(false)
         toast(message)
         if (::overlay.isInitialized) setControlsVisible(true)
     }
@@ -977,7 +1009,9 @@ class PlayerActivity : Activity() {
             // O loader possui ciclo próprio e não pode ser escondido quando os
             // controles são fechados antes do primeiro STATE_READY.
             when {
-                child === loading -> Unit
+                child === loading || child === loadingPanel -> {
+                    child.visibility = if (!playerReady || loadingPanel.visibility == View.VISIBLE) View.VISIBLE else View.GONE
+                }
                 child === topBar -> {
                     // Durante o loading o Voltar permanece acessível. Depois que
                     // o player está pronto, a barra segue a mesma regra dos demais
@@ -988,6 +1022,11 @@ class PlayerActivity : Activity() {
             }
         }
         if (visible) scheduleHide()
+    }
+
+    private fun setLoadingVisible(visible: Boolean) {
+        if (::loading.isInitialized) loading.visibility = if (visible) View.VISIBLE else View.GONE
+        if (::loadingPanel.isInitialized) loadingPanel.visibility = if (visible) View.VISIBLE else View.GONE
     }
 
     private fun scheduleHide() {
