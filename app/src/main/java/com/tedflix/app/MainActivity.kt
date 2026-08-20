@@ -50,6 +50,7 @@ class MainActivity : Activity() {
             "tedflix-avatar-04", "tedflix-avatar-05", "tedflix-avatar-06",
             "tedflix-avatar-07", "tedflix-avatar-08", "tedflix-avatar-09",
             "tedflix-avatar-10", "tedflix-avatar-11", "tedflix-avatar-12",
+            "tedflix-avatar-13", "tedflix-avatar-14", "tedflix-avatar-15",
         )
     }
 
@@ -829,6 +830,97 @@ class MainActivity : Activity() {
             } catch (error: Throwable) {
                 Log.w("TedflixMain", "Falha ao alternar favorito", error)
                 "{\"success\":false,\"favorito\":false,\"error\":\"Não foi possível atualizar o favorito.\"}"
+            }
+        }
+
+        @JavascriptInterface
+        fun getProfiles(): String {
+            return try {
+                val profiles = AuthSession.profiles()
+                org.json.JSONObject().apply {
+                    put("success", true)
+                    put("activeId", AuthSession.activeProfileId())
+                    put("profiles", org.json.JSONArray().apply {
+                        profiles.forEach { profile ->
+                            put(org.json.JSONObject().apply {
+                                put("id", profile.id)
+                                put("name", profile.name)
+                                put("avatarSeed", profile.avatarSeed)
+                                put("avatarStyle", profile.avatarStyle)
+                                put("email", profile.email)
+                            })
+                        }
+                    })
+                }.toString()
+            } catch (error: Throwable) {
+                Log.w("TedflixMain", "Falha ao listar perfis", error)
+                "{\"success\":false,\"error\":\"Não foi possível carregar os perfis.\"}"
+            }
+        }
+
+        @JavascriptInterface
+        fun activateProfileFromSettings(profileId: String?): String {
+            return try {
+                val result = AuthSession.activateProfile(profileId.orEmpty().trim())
+                if (result.ok) {
+                    activity.remoteHistoryProfileId = ""
+                    activity.remoteHistoryCache = emptyList()
+                    activity.refreshHeaderBadges()
+                }
+                org.json.JSONObject().apply {
+                    put("success", result.ok)
+                    result.value?.id?.let { put("profileId", it) }
+                    if (result.message.isNotBlank()) put("error", result.message)
+                }.toString()
+            } catch (error: Throwable) {
+                Log.w("TedflixMain", "Falha ao ativar perfil", error)
+                "{\"success\":false,\"error\":\"Não foi possível selecionar o perfil.\"}"
+            }
+        }
+
+        @JavascriptInterface
+        fun updateStoredProfile(profileId: String?, name: String?, avatarSeed: String?): String {
+            return try {
+                val id = profileId.orEmpty().trim()
+                val updated = AuthSession.updateProfile(id, name.orEmpty(), avatarSeed.orEmpty())
+                if (updated && id == AuthSession.activeProfileId()) activity.refreshHeaderBadges()
+                org.json.JSONObject().put("success", updated).apply {
+                    if (!updated) put("error", "Perfil não encontrado.")
+                }.toString()
+            } catch (error: Throwable) {
+                Log.w("TedflixMain", "Falha ao atualizar perfil", error)
+                "{\"success\":false,\"error\":\"Não foi possível salvar o perfil.\"}"
+            }
+        }
+
+        @JavascriptInterface
+        fun createProfileFromSettings(code: String?, email: String?, password: String?, name: String?, avatarSeed: String?): String {
+            return try {
+                val result = AuthSession.createProfile(
+                    code.orEmpty(), email.orEmpty(), password.orEmpty(), name.orEmpty(), avatarSeed.orEmpty(),
+                )
+                org.json.JSONObject().apply {
+                    put("success", result.ok)
+                    result.value?.id?.let { put("profileId", it) }
+                    if (result.message.isNotBlank()) put("error", result.message)
+                }.toString()
+            } catch (error: Throwable) {
+                Log.w("TedflixMain", "Falha ao criar perfil", error)
+                "{\"success\":false,\"error\":\"Não foi possível adicionar o perfil.\"}"
+            }
+        }
+
+        @JavascriptInterface
+        fun deleteProfileFromSettings(profileId: String?): String {
+            return try {
+                val deleted = AuthSession.deleteProfile(profileId.orEmpty().trim())
+                if (deleted) activity.refreshHeaderBadges()
+                org.json.JSONObject().put("success", deleted).apply {
+                    if (!deleted) put("error", "O perfil principal não pode ser excluído ou não foi encontrado.")
+                }.toString()
+            } catch (error: Throwable) {
+                Log.w("TedflixMain", "Falha ao excluir perfil", error)
+                "{\"success\":false,\"error\":\"Não foi possível excluir o perfil.\"}"
             }
         }
 
