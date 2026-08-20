@@ -55,7 +55,7 @@ class PlayerActivity : Activity() {
         const val EXTRA_SERIE_SLUG = "serie_slug"
         const val PREFS = "tedflix_preferences"
         const val BUFFER_KEY = "buffer"
-        private const val API_BASE = "https://ted.cryptitys.site/api"
+        private const val API_BASE = "https://tedtv.onrender.com/api"
         private const val STREAM_ORIGIN = "https://novelasflix.video"
         private const val STREAM_REFERER = "https://novelasflix.video/"
         private const val STREAM_USER_AGENT =
