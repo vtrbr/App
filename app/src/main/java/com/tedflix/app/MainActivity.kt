@@ -97,8 +97,7 @@ class MainActivity : Activity() {
 
     private fun showProfileChooser() {
         val profiles = loadProfiles()
-        val selectedId = getSharedPreferences(PROFILE_PREFS, Context.MODE_PRIVATE)
-            .getString("selected_profile_id", profiles.firstOrNull()?.id.orEmpty()).orEmpty()
+        val selectedId = AuthSession.activeProfileId().ifBlank { profiles.firstOrNull()?.id.orEmpty() }
         val root = android.widget.FrameLayout(this).apply { setBackgroundColor(Color.rgb(5, 6, 9)) }
         val banner = ImageView(this).apply {
             setImageResource(com.tedflix.app.R.drawable.tedflix_auth_banner)
@@ -207,6 +206,11 @@ class MainActivity : Activity() {
     }
 
     private fun selectProfileAndOpen(root: android.widget.FrameLayout, content: LinearLayout, shade: View, profile: LocalProfile) {
+        val activated = AuthSession.activateProfile(profile.id)
+        if (!activated.ok) {
+            Toast.makeText(this, activated.message.ifBlank { "Não foi possível selecionar este perfil." }, Toast.LENGTH_LONG).show()
+            return
+        }
         getSharedPreferences(PROFILE_PREFS, Context.MODE_PRIVATE).edit().putString("selected_profile_id", profile.id).apply()
         content.visibility = View.GONE; shade.alpha = 0.98f
         val loader = LinearLayout(this).apply {
@@ -223,28 +227,15 @@ class MainActivity : Activity() {
     }
 
     private fun loadProfiles(): MutableList<LocalProfile> {
-        val prefs = getSharedPreferences(PROFILE_PREFS, Context.MODE_PRIVATE)
-        val profiles = mutableListOf<LocalProfile>()
-        try {
-            val array = org.json.JSONArray(prefs.getString("profiles_json", "").orEmpty())
-            for (i in 0 until array.length()) {
-                val item = array.optJSONObject(i) ?: continue
-                val id = item.optString("id").trim(); val name = item.optString("name").trim(); val seed = item.optString("avatarSeed").trim()
-                if (id.isNotBlank() && name.isNotBlank() && seed.isNotBlank()) profiles += LocalProfile(id, name, seed, item.optString("avatarStyle").ifBlank { "fun-emoji" })
-            }
-        } catch (_: Throwable) {}
-        if (profiles.isEmpty()) {
-            val accountName = AuthSession.cachedUser()?.username?.ifBlank { "Vitor" } ?: "Vitor"
-            DEFAULT_AVATAR_SEEDS.take(9).forEachIndexed { index, seed -> profiles += LocalProfile("profile-${index + 1}", if (index == 0) accountName else "Perfil ${index + 1}", seed) }
-            saveProfiles(profiles)
-        }
-        return profiles
+        val accountName = AuthSession.cachedUser()?.username.orEmpty()
+        AuthSession.ensureCurrentProfile(accountName, DEFAULT_AVATAR_SEEDS.first())
+        return AuthSession.profiles().map { profile ->
+            LocalProfile(profile.id, profile.name, profile.avatarSeed, profile.avatarStyle)
+        }.toMutableList()
     }
 
-    private fun saveProfiles(profiles: List<LocalProfile>) {
-        val array = org.json.JSONArray()
-        profiles.forEach { profile -> array.put(org.json.JSONObject().put("id", profile.id).put("name", profile.name).put("avatarSeed", profile.avatarSeed).put("avatarStyle", profile.avatarStyle)) }
-        getSharedPreferences(PROFILE_PREFS, Context.MODE_PRIVATE).edit().putString("profiles_json", array.toString()).apply()
+    private fun updateProfile(profile: LocalProfile, name: String = profile.name, avatarSeed: String = profile.avatarSeed) {
+        AuthSession.updateProfile(profile.id, name, avatarSeed)
     }
 
     private fun avatarUrl(seed: String): String = "https://api.dicebear.com/10.x/fun-emoji/png?seed=${Uri.encode(seed)}&size=256"
@@ -272,14 +263,44 @@ class MainActivity : Activity() {
         }, LinearLayout.LayoutParams(-1, dp(46)))
         val nameInput = EditText(this).apply { hint = "Nome do perfil"; setSingleLine(true) }
         panel.addView(nameInput, LinearLayout.LayoutParams(-1, dp(54)).apply { topMargin = dp(8) })
-        val dialog = AlertDialog.Builder(this).setTitle("Criar perfil").setView(panel).setNegativeButton("Cancelar", null).setPositiveButton("Continuar", null).create()
+        val codeInput = EditText(this).apply { hint = "Token ou código de acesso"; setSingleLine(true) }
+        panel.addView(codeInput, LinearLayout.LayoutParams(-1, dp(54)))
+        val emailInput = EditText(this).apply { hint = "E-mail"; setSingleLine(true); inputType = android.text.InputType.TYPE_CLASS_TEXT or android.text.InputType.TYPE_TEXT_VARIATION_EMAIL_ADDRESS }
+        panel.addView(emailInput, LinearLayout.LayoutParams(-1, dp(54)))
+        val passwordInput = EditText(this).apply { hint = "Senha"; setSingleLine(true); inputType = android.text.InputType.TYPE_CLASS_TEXT or android.text.InputType.TYPE_TEXT_VARIATION_PASSWORD }
+        panel.addView(passwordInput, LinearLayout.LayoutParams(-1, dp(54)))
+        val dialog = AlertDialog.Builder(this).setTitle("Adicionar perfil").setView(ScrollView(this).apply { addView(panel) }).setNegativeButton("Cancelar", null).setPositiveButton("Validar e adicionar", null).create()
         dialog.setOnShowListener {
             dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {
                 val name = nameInput.text.toString().trim()
-                if (name.isBlank()) { nameInput.error = "Informe um nome"; return@setOnClickListener }
-                val profiles = loadProfiles()
-                if (profiles.size >= DEFAULT_AVATAR_SEEDS.size) { Toast.makeText(this, "Limite de 12 perfis atingido.", Toast.LENGTH_SHORT).show(); return@setOnClickListener }
-                profiles += LocalProfile("profile-${System.currentTimeMillis()}", name, selectedSeed[0]); saveProfiles(profiles); dialog.dismiss(); showProfileChooser()
+                val code = codeInput.text.toString().trim()
+                val email = emailInput.text.toString().trim()
+                val password = passwordInput.text.toString()
+                when {
+                    name.isBlank() -> nameInput.error = "Informe um nome"
+                    code.isBlank() -> codeInput.error = "Informe o token/código"
+                    email.isBlank() -> emailInput.error = "Informe o e-mail"
+                    password.isBlank() -> passwordInput.error = "Informe a senha"
+                    else -> {
+                        val action = dialog.getButton(AlertDialog.BUTTON_POSITIVE)
+                        action.isEnabled = false
+                        action.text = "Validando..."
+                        Thread {
+                            val result = AuthSession.createProfile(code, email, password, name, selectedSeed[0])
+                            runOnUiThread {
+                                if (result.ok) {
+                                    dialog.dismiss()
+                                    showProfileChooser()
+                                    Toast.makeText(this, "Perfil adicionado. Selecione-o para entrar.", Toast.LENGTH_SHORT).show()
+                                } else {
+                                    action.isEnabled = true
+                                    action.text = "Validar e adicionar"
+                                    Toast.makeText(this, result.message.ifBlank { "Não foi possível validar a conta." }, Toast.LENGTH_LONG).show()
+                                }
+                            }
+                        }.apply { this.name = "TedflixCreateProfile"; start() }
+                    }
+                }
             }
         }
         dialog.show()
@@ -325,24 +346,35 @@ class MainActivity : Activity() {
         val input = EditText(this).apply { setSingleLine(true); setText(profile.name); hint = "Nome do perfil" }
         AlertDialog.Builder(this).setTitle("Editar perfil").setView(input).setNegativeButton("Cancelar", null).setPositiveButton("Salvar") { _, _ ->
             val name = input.text.toString().trim().ifBlank { profile.name }
-            saveProfiles(loadProfiles().map { if (it.id == profile.id) it.copy(name = name) else it }); showManageProfilesDialog()
+            updateProfile(profile, name = name)
+            showManageProfilesDialog()
         }.setNeutralButton("Alterar avatar") { _, _ -> showAvatarPicker(profile.avatarSeed) { seed ->
-            saveProfiles(loadProfiles().map { if (it.id == profile.id) it.copy(avatarSeed = seed) else it }); showProfileChooser()
+            updateProfile(profile, avatarSeed = seed)
+            showProfileChooser()
         } }.show()
     }
 
     private fun confirmDeleteProfile(profile: LocalProfile) {
+        val profiles = loadProfiles()
+        if (profiles.size <= 1) {
+            Toast.makeText(this, "O último perfil não pode ser excluído.", Toast.LENGTH_SHORT).show()
+            return
+        }
         AlertDialog.Builder(this).setTitle("Excluir perfil?").setMessage("Tem certeza que deseja excluir ${profile.name}?").setNegativeButton("Cancelar", null).setPositiveButton("Excluir") { _, _ ->
-            val profiles = loadProfiles().filterNot { it.id == profile.id }.toMutableList(); saveProfiles(profiles)
-            val prefs = getSharedPreferences(PROFILE_PREFS, Context.MODE_PRIVATE)
-            if (prefs.getString("selected_profile_id", "") == profile.id) prefs.edit().putString("selected_profile_id", profiles.firstOrNull()?.id.orEmpty()).apply()
+            if (AuthSession.deleteProfile(profile.id)) {
+                val remaining = loadProfiles()
+                getSharedPreferences(PROFILE_PREFS, Context.MODE_PRIVATE).edit()
+                    .putString("selected_profile_id", AuthSession.activeProfileId().ifBlank { remaining.firstOrNull()?.id.orEmpty() }).apply()
+            }
             showManageProfilesDialog()
         }.show()
     }
 
     private fun currentProfileName(): String {
-        val profiles = loadProfiles(); val selected = getSharedPreferences(PROFILE_PREFS, Context.MODE_PRIVATE).getString("selected_profile_id", "")
-        return profiles.firstOrNull { it.id == selected }?.name ?: profiles.firstOrNull()?.name ?: "Meu perfil"
+        val activeId = AuthSession.activeProfileId()
+        return AuthSession.profiles().firstOrNull { it.id == activeId }?.name
+            ?: AuthSession.cachedUser()?.username?.ifBlank { "Meu perfil" }
+            ?: "Meu perfil"
     }
 
     @SuppressLint("SetJavaScriptEnabled")
@@ -579,6 +611,30 @@ class MainActivity : Activity() {
                         if (item.optString("serieSlug").isBlank() && match.serieSlug.isNotBlank()) item.put("serieSlug", match.serieSlug)
                         item.put("remote", true)
                     }
+                }
+                remote.forEach { remoteItem ->
+                    val categoria = remoteItem.categoria.trim()
+                    val slug = remoteItem.slug.trim()
+                    if (categoria.isBlank() || slug.isBlank()) return@forEach
+                    val alreadyPresent = (0 until local.length()).any { index ->
+                        val item = local.optJSONObject(index) ?: return@any false
+                        val sameEpisode = item.optString("categoria") == categoria && item.optString("slug") == slug
+                        val sameId = remoteItem.filmeId.isNotBlank() && item.optString("filmeId") == remoteItem.filmeId
+                        sameEpisode || sameId
+                    }
+                    if (alreadyPresent) return@forEach
+                    local.put(org.json.JSONObject().apply {
+                        put("categoria", categoria)
+                        put("slug", slug)
+                        put("filmeId", remoteItem.filmeId.ifBlank { slug })
+                        put("titulo", remoteItem.titulo)
+                        put("thumb", remoteItem.thumb)
+                        put("tempo", remoteItem.tempo)
+                        put("tipo", remoteItem.tipo)
+                        put("serieCategoria", remoteItem.serieCategoria)
+                        put("serieSlug", remoteItem.serieSlug)
+                        put("remote", true)
+                    })
                 }
                 local.toString()
             } catch (error: Throwable) {

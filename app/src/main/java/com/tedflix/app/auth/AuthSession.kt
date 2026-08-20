@@ -30,6 +30,9 @@ object AuthSession {
     private const val PREFS = "tedflix_auth_session"
     private const val TOKEN_KEY = "encrypted_access_token"
     private const val KEY_ALIAS = "TedflixAuthBearerKey"
+    private const val PROFILES_PREFS = "tedflix_saved_profiles"
+    private const val PROFILES_KEY = "profiles_json"
+    private const val ACTIVE_PROFILE_KEY = "active_profile_id"
 
     data class User(
         val id: String = "",
@@ -38,6 +41,24 @@ object AuthSession {
         val expiresAt: String = "",
         val accountStatus: String = "",
         val daysRemaining: Int? = null,
+    )
+
+    data class Profile(
+        val id: String,
+        val name: String,
+        val avatarSeed: String,
+        val avatarStyle: String = "fun-emoji",
+        val email: String = "",
+    )
+
+    private data class StoredProfile(
+        val id: String,
+        val name: String,
+        val avatarSeed: String,
+        val avatarStyle: String,
+        val email: String,
+        val user: User,
+        val encryptedToken: String,
     )
 
     data class Notification(
@@ -144,6 +165,110 @@ object AuthSession {
     fun clear() {
         if (!::appContext.isInitialized) return
         appContext.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().clear().apply()
+        appContext.getSharedPreferences(PROFILES_PREFS, Context.MODE_PRIVATE).edit().clear().apply()
+    }
+
+    fun profiles(): List<Profile> = readStoredProfiles().map { it.toPublic() }
+
+    fun activeProfileId(): String = if (::appContext.isInitialized) {
+        appContext.getSharedPreferences(PROFILES_PREFS, Context.MODE_PRIVATE)
+            .getString(ACTIVE_PROFILE_KEY, "").orEmpty()
+    } else ""
+
+    fun ensureCurrentProfile(defaultName: String, defaultAvatarSeed: String): Profile? {
+        val currentToken = token()?.takeIf { it.isNotBlank() } ?: return null
+        val stored = readStoredProfiles()
+        val existing = stored.firstOrNull { profile ->
+            try { decrypt(profile.encryptedToken) == currentToken } catch (_: Throwable) { false }
+        }
+        if (existing != null) {
+            saveStoredProfiles(stored, existing.id)
+            return existing.toPublic()
+        }
+        val user = cachedUser() ?: User()
+        val profile = StoredProfile(
+            id = "profile-${java.util.UUID.randomUUID()}",
+            name = defaultName.trim().ifBlank { user.username.ifBlank { user.email.ifBlank { "Meu perfil" } } },
+            avatarSeed = defaultAvatarSeed,
+            avatarStyle = "fun-emoji",
+            email = user.email,
+            user = user,
+            encryptedToken = encrypt(currentToken),
+        )
+        saveStoredProfiles(stored + profile, profile.id)
+        return profile.toPublic()
+    }
+
+    fun activateProfile(id: String): Result<Profile> {
+        val profile = readStoredProfiles().firstOrNull { it.id == id }
+            ?: return Result(false, message = "Perfil não encontrado.")
+        return try {
+            val accessToken = decrypt(profile.encryptedToken)
+            saveLogin(accessToken, profile.user)
+            appContext.getSharedPreferences(PROFILES_PREFS, Context.MODE_PRIVATE).edit()
+                .putString(ACTIVE_PROFILE_KEY, profile.id).apply()
+            Result(true, profile.toPublic(), statusCode = 200)
+        } catch (error: Throwable) {
+            Result(false, message = "Não foi possível ativar este perfil.")
+        }
+    }
+
+    fun createProfile(code: String, email: String, password: String, name: String, avatarSeed: String): Result<Profile> {
+        ensureCurrentProfile(cachedUser()?.username.orEmpty(), "tedflix-avatar-01")
+        return try {
+            val body = JSONObject()
+                .put("code", code.trim())
+                .put("email", email.trim())
+                .put("password", password)
+            val response = rawRequest("POST", "/auth/login", body.toString(), includeBearer = false)
+            val json = parseObject(response.body)
+            if (response.statusCode !in 200..299) {
+                Result(false, message = serverMessage(json, response.statusCode), statusCode = response.statusCode)
+            } else {
+                val token = json.optString("token").trim()
+                if (token.isBlank()) {
+                    Result(false, message = "O servidor não devolveu uma sessão válida.", statusCode = response.statusCode)
+                } else {
+                    val user = parseUser(json.optJSONObject("user")) ?: User(email = email.trim())
+                    val profile = StoredProfile(
+                        id = "profile-${java.util.UUID.randomUUID()}",
+                        name = name.trim().ifBlank { user.username.ifBlank { email.trim() } },
+                        avatarSeed = avatarSeed.ifBlank { "tedflix-avatar-01" },
+                        avatarStyle = "fun-emoji",
+                        email = user.email.ifBlank { email.trim() },
+                        user = user,
+                        encryptedToken = encrypt(token),
+                    )
+                    saveStoredProfiles(readStoredProfiles() + profile, activeProfileId())
+                    Result(true, profile.toPublic(), statusCode = response.statusCode)
+                }
+            }
+        } catch (error: Throwable) {
+            Result(false, message = friendlyNetworkError(error), statusCode = 0)
+        }
+    }
+
+    fun updateProfile(id: String, name: String, avatarSeed: String): Boolean {
+        val updated = readStoredProfiles().map { profile ->
+            if (profile.id == id) profile.copy(
+                name = name.trim().ifBlank { profile.name },
+                avatarSeed = avatarSeed.ifBlank { profile.avatarSeed },
+            ) else profile
+        }
+        if (updated.none { it.id == id }) return false
+        saveStoredProfiles(updated, activeProfileId())
+        return true
+    }
+
+    fun deleteProfile(id: String): Boolean {
+        val stored = readStoredProfiles()
+        if (stored.size <= 1 || stored.none { it.id == id }) return false
+        val remaining = stored.filterNot { it.id == id }
+        val active = activeProfileId()
+        val nextId = if (active == id) remaining.first().id else active
+        saveStoredProfiles(remaining, nextId)
+        if (active == id) activateProfile(nextId)
+        return true
     }
 
     fun login(code: String, email: String, password: String): Result<User> {
@@ -319,6 +444,65 @@ object AuthSession {
                 )
             }
         }
+    }
+
+    private fun StoredProfile.toPublic() = Profile(id, name, avatarSeed, avatarStyle, email)
+
+    private fun readStoredProfiles(): List<StoredProfile> {
+        if (!::appContext.isInitialized) return emptyList()
+        val raw = appContext.getSharedPreferences(PROFILES_PREFS, Context.MODE_PRIVATE)
+            .getString(PROFILES_KEY, "[]").orEmpty()
+        return try {
+            val array = JSONArray(raw)
+            buildList {
+                for (i in 0 until array.length()) {
+                    val item = array.optJSONObject(i) ?: continue
+                    val encrypted = item.optString("encryptedToken").trim()
+                    val id = item.optString("id").trim()
+                    if (id.isBlank() || encrypted.isBlank()) continue
+                    add(StoredProfile(
+                        id = id,
+                        name = item.optString("name").ifBlank { "Meu perfil" },
+                        avatarSeed = item.optString("avatarSeed").ifBlank { "tedflix-avatar-01" },
+                        avatarStyle = item.optString("avatarStyle").ifBlank { "fun-emoji" },
+                        email = item.optString("email"),
+                        user = User(
+                            id = item.optString("userId"),
+                            email = item.optString("userEmail").ifBlank { item.optString("email") },
+                            username = item.optString("username"),
+                            expiresAt = item.optString("expiresAt"),
+                            accountStatus = item.optString("accountStatus"),
+                            daysRemaining = item.optInt("daysRemaining", -1).takeIf { it >= 0 },
+                        ),
+                        encryptedToken = encrypted,
+                    ))
+                }
+            }
+        } catch (_: Throwable) { emptyList() }
+    }
+
+    private fun saveStoredProfiles(profiles: List<StoredProfile>, activeId: String) {
+        if (!::appContext.isInitialized) return
+        val array = JSONArray().apply {
+            profiles.forEach { profile -> put(JSONObject().apply {
+                put("id", profile.id)
+                put("name", profile.name)
+                put("avatarSeed", profile.avatarSeed)
+                put("avatarStyle", profile.avatarStyle)
+                put("email", profile.email)
+                put("userId", profile.user.id)
+                put("userEmail", profile.user.email)
+                put("username", profile.user.username)
+                put("expiresAt", profile.user.expiresAt)
+                put("accountStatus", profile.user.accountStatus)
+                put("daysRemaining", profile.user.daysRemaining ?: -1)
+                put("encryptedToken", profile.encryptedToken)
+            }) }
+        }
+        appContext.getSharedPreferences(PROFILES_PREFS, Context.MODE_PRIVATE).edit()
+            .putString(PROFILES_KEY, array.toString())
+            .putString(ACTIVE_PROFILE_KEY, activeId)
+            .apply()
     }
 
     fun saveProgress(

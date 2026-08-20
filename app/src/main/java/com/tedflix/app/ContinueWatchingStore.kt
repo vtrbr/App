@@ -1,13 +1,28 @@
 package com.tedflix.app
 
 import android.content.Context
+import com.tedflix.app.auth.AuthSession
 import org.json.JSONArray
 import org.json.JSONObject
 
 /** Progresso local; a sincronização autenticada pode ser adicionada depois. */
 object ContinueWatchingStore {
-    private const val PREFS = "tedflix_continue_watching"
+    private const val LEGACY_PREFS = "tedflix_continue_watching"
     private const val ITEMS = "items"
+
+    private fun prefs(context: Context): android.content.SharedPreferences {
+        val profileId = AuthSession.activeProfileId().trim()
+        if (profileId.isBlank()) return context.getSharedPreferences(LEGACY_PREFS, Context.MODE_PRIVATE)
+        val scopedName = "${LEGACY_PREFS}_$profileId"
+        val scoped = context.getSharedPreferences(scopedName, Context.MODE_PRIVATE)
+        if (!scoped.contains(ITEMS)) {
+            val legacy = context.getSharedPreferences(LEGACY_PREFS, Context.MODE_PRIVATE)
+            if (legacy.contains(ITEMS)) {
+                scoped.edit().putString(ITEMS, legacy.getString(ITEMS, "[]")).apply()
+            }
+        }
+        return scoped
+    }
     private const val MAX_ITEMS = 30
 
     data class Entry(
@@ -55,7 +70,7 @@ object ContinueWatchingStore {
     }
 
     fun read(context: Context): List<Entry> {
-        val raw = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getString(ITEMS, "[]") ?: "[]"
+        val raw = prefs(context).getString(ITEMS, "[]") ?: "[]"
         return try {
             val json = JSONArray(raw)
             buildList {
@@ -102,6 +117,6 @@ object ContinueWatchingStore {
                 put("serieSlug", item.serieSlug)
             }) }
         }
-        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().putString(ITEMS, json.toString()).apply()
+        prefs(context).edit().putString(ITEMS, json.toString()).apply()
     }
 }
