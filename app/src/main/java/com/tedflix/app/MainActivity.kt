@@ -62,6 +62,9 @@ class MainActivity : Activity() {
     private lateinit var webView: WebView
     private var playerWasOpened = false
     @Volatile private var authRedirectInProgress = false
+    @Volatile private var historyRefreshInFlight = false
+    @Volatile private var remoteHistoryProfileId = ""
+    @Volatile private var remoteHistoryCache: List<AuthSession.HistoryItem> = emptyList()
 
     @SuppressLint("SetJavaScriptEnabled")
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -586,11 +589,66 @@ class MainActivity : Activity() {
         }
 
         @JavascriptInterface
+        fun refreshContinueWatching() {
+            val profileId = AuthSession.activeProfileId()
+            if (profileId.isBlank() || !AuthSession.hasToken()) {
+                activity.runOnUiThread { notifyHistoryReady() }
+                return
+            }
+            if (activity.historyRefreshInFlight && activity.remoteHistoryProfileId == profileId) return
+            activity.historyRefreshInFlight = true
+            activity.remoteHistoryProfileId = profileId
+            activity.remoteHistoryCache = emptyList()
+            Thread {
+                try {
+                    val result = AuthSession.continueWatching()
+                    if (!result.ok) {
+                        Log.w("TedflixMain", "Histórico remoto indisponível: ${result.message}")
+                        return@Thread
+                    }
+                    val enriched = result.value.orEmpty().map { item ->
+                        if (item.categoria.isNotBlank() && item.slug.isNotBlank()) return@map item
+                        val resolved = AuthSession.resolveCatalogItem(item.titulo, item.filmeId).value
+                            ?: return@map item
+                        item.copy(
+                            titulo = item.titulo.ifBlank { resolved.titulo },
+                            thumb = item.thumb.ifBlank { resolved.thumb },
+                            categoria = item.categoria.ifBlank { resolved.categoria },
+                            slug = item.slug.ifBlank { resolved.slug },
+                            tipo = item.tipo.ifBlank { resolved.tipo },
+                        )
+                    }.filter { it.categoria.isNotBlank() && it.slug.isNotBlank() }
+                    activity.remoteHistoryCache = enriched
+                    Log.d("TedflixMain", "Histórico remoto carregado: ${enriched.size} item(ns)")
+                } catch (error: Throwable) {
+                    Log.w("TedflixMain", "Falha ao atualizar histórico remoto", error)
+                } finally {
+                    activity.historyRefreshInFlight = false
+                    activity.runOnUiThread { notifyHistoryReady() }
+                }
+            }.apply { name = "TedflixHistoryRefresh"; start() }
+        }
+
+        private fun notifyHistoryReady() {
+            if (!activity.isFinishing && !activity.isDestroyed) {
+                activity.webView.evaluateJavascript(
+                    "window.__tedflixHistoryReady && window.__tedflixHistoryReady();",
+                    null,
+                )
+            }
+        }
+
+        @JavascriptInterface
         fun getContinueWatching(): String {
             return try {
                 val local = org.json.JSONArray(ContinueWatchingStore.toJson(activity))
                 if (!AuthSession.hasToken()) return local.toString()
-                val remote = AuthSession.continueWatching().value.orEmpty()
+                val activeProfileId = AuthSession.activeProfileId()
+                val remote = if (activeProfileId.isNotBlank() && activeProfileId == activity.remoteHistoryProfileId) {
+                    activity.remoteHistoryCache
+                } else {
+                    emptyList()
+                }
                 for (i in 0 until local.length()) {
                     val item = local.optJSONObject(i) ?: continue
                     val filmeId = item.optString("filmeId").ifBlank { item.optString("slug") }

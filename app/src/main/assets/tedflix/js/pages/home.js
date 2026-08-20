@@ -54,6 +54,20 @@ export default async function paginaInicio(raiz) {
 async function carregarContinuarAssistindo() {
   try {
     if (!window.AndroidPlayer?.getContinueWatching) return [];
+    if (window.AndroidPlayer.refreshContinueWatching) {
+      await new Promise((resolve) => {
+        let finalizado = false;
+        const concluir = () => {
+          if (finalizado) return;
+          finalizado = true;
+          window.__tedflixHistoryReady = null;
+          resolve();
+        };
+        window.__tedflixHistoryReady = concluir;
+        try { window.AndroidPlayer.refreshContinueWatching(); } catch (_) { concluir(); }
+        setTimeout(concluir, 5000);
+      });
+    }
     const itens = JSON.parse(window.AndroidPlayer.getContinueWatching() || "[]");
     if (!Array.isArray(itens)) return [];
     const cards = await Promise.all(itens
