@@ -50,7 +50,7 @@ object SourceRegistry {
             id = PRIMARY_ID,
             name = "Servidor Tedflix",
             description = "Catálogo principal e player HLS do seu servidor.",
-            baseUrl = "https://tedtv.onrender.com/api",
+            baseUrl = "https://ted.cryptitys.site/api",
             types = setOf(SourceContentType.MOVIES, SourceContentType.SERIES),
             availableInManifest = false,
         ),

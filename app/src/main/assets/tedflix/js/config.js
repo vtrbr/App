@@ -1,4 +1,4 @@
-export const API_BASE = "https://tedtv.onrender.com/api";
+export const API_BASE = "https://ted.cryptitys.site/api";
 
 export const CATEGORIAS = [
   { slug: "acao", label: "Ação" },
