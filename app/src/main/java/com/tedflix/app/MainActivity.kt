@@ -838,6 +838,11 @@ class MainActivity : Activity() {
         @JavascriptInterface
         fun getProfiles(): String {
             return try {
+                val user = AuthSession.cachedUser()
+                AuthSession.ensureCurrentProfile(
+                    user?.username.orEmpty().ifBlank { user?.email.orEmpty() },
+                    "tedflix-avatar-01",
+                )
                 val profiles = AuthSession.profiles()
                 org.json.JSONObject().apply {
                     put("success", true)
@@ -883,7 +888,21 @@ class MainActivity : Activity() {
         @JavascriptInterface
         fun updateStoredProfile(profileId: String?, name: String?, avatarSeed: String?): String {
             return try {
-                val id = profileId.orEmpty().trim()
+                val requestedId = profileId.orEmpty().trim()
+                val user = AuthSession.cachedUser()
+                val ensured = if (requestedId.isBlank()) {
+                    AuthSession.ensureCurrentProfile(
+                        user?.username.orEmpty().ifBlank { user?.email.orEmpty() },
+                        "tedflix-avatar-01",
+                    )
+                } else null
+                val id = requestedId.ifBlank { ensured?.id.orEmpty() }
+                if (id.isBlank()) {
+                    return org.json.JSONObject()
+                        .put("success", false)
+                        .put("error", "Nenhum perfil autenticado foi encontrado.")
+                        .toString()
+                }
                 val updated = AuthSession.updateProfile(id, name.orEmpty(), avatarSeed.orEmpty())
                 if (updated && id == AuthSession.activeProfileId()) activity.refreshHeaderBadges()
                 org.json.JSONObject().put("success", updated).apply {

@@ -476,14 +476,16 @@ body.imersivo .topbar, body.imersivo .tabbar { display: none; }
 
 /* ---------- configurações Tedflix ---------- */
 .cfg-shell { width: 100%; max-width: 920px; min-width: 0; margin: 0 auto; padding: 8px 16px 36px; overflow-x: hidden; overflow-y: visible; }
-.cfg-screen-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; width: 100%; min-width: 0; min-height: 48px; margin: 4px 0 4px; }
-.cfg-screen-head-left { display: flex; align-items: center; flex: 1 1 auto; min-width: 0; gap: 12px; overflow: visible; }
+.cfg-screen-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; width: 100%; min-width: 0; min-height: 48px; margin: 4px 0; overflow: hidden; }
+.cfg-screen-head-left { display: flex; align-items: center; flex: 1 1 auto; min-width: 0; gap: 10px; overflow: hidden; }
 .cfg-screen-head h1 { flex: 1 1 auto; min-width: 0; max-width: 100%; overflow: hidden; font-size: clamp(24px, 5vw, 36px); text-overflow: ellipsis; text-transform: uppercase; white-space: nowrap; line-height: 1; }
-.cfg-screen-head .cfg-back { flex: 0 0 68px; }
-.cfg-back, .cfg-head-action { display: inline-grid; place-items: center; min-width: 68px; height: 68px; border-radius: 999px; }
-.cfg-back { flex: 0 0 68px; width: 68px; background: #171820; border: 1px solid rgba(255,255,255,.12); color: #fff; overflow: visible; }
-.cfg-back-glyph { display: block; color: #fff; font-family: Arial, sans-serif; font-size: 46px; font-weight: 300; line-height: 1; transform: translateY(-2px); }
-.cfg-head-action { flex: 0 0 auto; min-width: 0; max-width: 35%; padding: 0 8px; overflow: hidden; color: var(--primary); font-size: clamp(16px, 3vw, 22px); font-weight: 800; text-overflow: ellipsis; white-space: nowrap; }
+.cfg-screen-head .cfg-back { flex: 0 0 40px; }
+.cfg-back, .cfg-head-action { display: inline-grid; place-items: center; min-width: 40px; width: 40px; height: 40px; border-radius: 50%; }
+.cfg-back { flex: 0 0 40px; padding: 0; background: rgba(255,255,255,.15); border: 1px solid rgba(255,255,255,.28); color: #fff; overflow: hidden; appearance: none; }
+.cfg-back:active { background: rgba(255,255,255,.25); transform: scale(.96); }
+.cfg-back-glyph { display: grid !important; place-items: center; width: 22px; height: 22px; color: #fff !important; font-size: inherit; line-height: 1; transform: none; }
+.cfg-back-glyph svg { display: block; width: 22px; height: 22px; fill: none; stroke: currentColor; stroke-width: 2.2; stroke-linecap: round; stroke-linejoin: round; }
+.cfg-head-action { flex: 0 1 auto; min-width: 0; max-width: 30%; padding: 0 8px; overflow: hidden; color: var(--primary); font-size: clamp(14px, 3vw, 20px); font-weight: 800; text-overflow: ellipsis; white-space: nowrap; }
 .cfg-lead { margin: 0 0 16px; color: var(--muted-foreground); font-size: 13px; line-height: 1.45; }
 .cfg-account-hero { overflow: hidden; margin: 8px 0 16px; border: 1px solid var(--border); border-radius: 22px; background: linear-gradient(145deg, color-mix(in oklab, var(--surface) 94%, #000), var(--surface)); box-shadow: 0 18px 42px rgba(0,0,0,.16); }
 .cfg-account-profile { display: flex; align-items: center; gap: 14px; width: 100%; min-width: 0; padding: 18px; text-align: left; }
@@ -665,11 +667,11 @@ html, body, #app, .app, .page, .cfg, .cfg-shell {
 }
 
 .cfg-screen-head {
-  overflow: visible;
+  overflow: hidden;
 }
 
 .cfg-screen-head-left {
-  overflow: visible;
+  overflow: hidden;
 }
 
 .cfg-screen-head h1 {
@@ -680,36 +682,50 @@ html, body, #app, .app, .page, .cfg, .cfg-shell {
 .cfg-head-action {
   flex: 0 1 auto;
   width: auto;
-  max-width: min(31vw, 104px);
+  max-width: min(30vw, 96px);
   min-width: 0;
   padding-inline: 6px;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 
-.cfg-back {
+.cfg-screen-head .cfg-back {
   position: relative;
   display: grid;
   place-items: center;
-  flex: 0 0 68px;
-  width: 68px;
-  min-width: 68px;
-  height: 68px;
+  flex: 0 0 40px;
+  width: 40px;
+  min-width: 40px;
+  height: 40px;
+  padding: 0;
   color: #fff !important;
-  background: #171820;
-  border: 1px solid rgba(255,255,255,.12);
-  border-radius: 999px;
-  overflow: visible;
+  background: rgba(255,255,255,.15);
+  border: 1px solid rgba(255,255,255,.28);
+  border-radius: 50%;
+  overflow: hidden;
+  appearance: none;
 }
 
 .cfg-back-glyph {
-  display: block !important;
+  display: grid !important;
+  place-items: center;
+  width: 22px;
+  height: 22px;
   color: #fff !important;
-  font-family: Arial, sans-serif;
-  font-size: 46px;
-  font-weight: 300;
+  font-size: inherit;
   line-height: 1;
-  transform: translateY(-2px);
+  transform: none;
+}
+
+.cfg-back-glyph svg {
+  display: block;
+  width: 22px;
+  height: 22px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2.2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
 }
 
 .cfg-profile-editor {
@@ -752,8 +768,8 @@ html, body, #app, .app, .page, .cfg, .cfg-shell {
   .cfg-screen-head-left { gap: 7px; }
   .cfg-screen-head h1 { font-size: clamp(22px, 7vw, 30px); }
   .cfg-head-action { max-width: 24vw; padding-inline: 2px; font-size: 15px; }
-  .cfg-back { flex-basis: 58px; width: 58px; min-width: 58px; height: 58px; }
-  .cfg-back-glyph { font-size: 39px; }
+  .cfg-screen-head .cfg-back { flex-basis: 40px; width: 40px; min-width: 40px; height: 40px; }
+  .cfg-back-glyph { width: 22px; height: 22px; }
   .cfg-editor-preview { width: min(52vw, 176px); height: min(52vw, 176px); }
   .cfg-form-card { padding-inline: 14px; }
 }

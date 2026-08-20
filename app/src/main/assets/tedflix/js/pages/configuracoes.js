@@ -81,7 +81,7 @@ function cabecalho(titulo, onBack, acao, textoAcao = "") {
   const left = el("div", { class: "cfg-screen-head-left" });
   if (onBack) {
     const back = el("button", { class: "cfg-back", type: "button", "aria-label": "Voltar", title: "Voltar" }, [
-      el("span", { class: "cfg-back-glyph", "aria-hidden": "true" }, "←"),
+      icon("back", "cfg-back-glyph"),
     ]);
     back.addEventListener("click", onBack);
     left.append(back);
@@ -313,7 +313,7 @@ export default async function paginaConfiguracoes(raiz) {
     state.draftNome = draftNome;
     state.draftAvatar = draftAvatar;
     page.innerHTML = "";
-    page.append(cabecalho("Editar perfil", onBack, () => salvarPerfil(perfil, nameInput.value, state.draftAvatar), "Salvar"));
+    page.append(cabecalho("Editar perfil", onBack));
     const editor = el("section", { class: "cfg-profile-editor" });
     const preview = el("div", { class: "cfg-editor-preview" }, [
       imgAvatar({ avatarSeed: state.draftAvatar, name: perfil?.name || "Avatar" }, "cfg-editor-avatar", 320),
@@ -346,7 +346,12 @@ export default async function paginaConfiguracoes(raiz) {
       toast("Digite um nome de perfil válido.", "error");
       return;
     }
-    const resposta = respostaAndroid("updateStoredProfile", perfil?.id || "", valor, avatarSeed || DEFAULT_SEED);
+    const profileId = String(perfil?.id || "").trim();
+    if (!profileId) {
+      toast("Perfil inválido. Reabra a tela de perfis e tente novamente.", "error");
+      return;
+    }
+    const resposta = respostaAndroid("updateStoredProfile", profileId, valor, String(avatarSeed || DEFAULT_SEED));
     if (!resposta.success) {
       toast(resposta.error || "Não foi possível salvar o perfil.", "error");
       return;
