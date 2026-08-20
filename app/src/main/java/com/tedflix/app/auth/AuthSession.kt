@@ -5,6 +5,7 @@ import android.net.Uri
 import android.security.keystore.KeyGenParameterSpec
 import android.security.keystore.KeyProperties
 import android.util.Base64
+import android.util.Log
 import android.webkit.WebResourceRequest
 import android.webkit.WebResourceResponse
 import org.json.JSONArray
@@ -24,6 +25,7 @@ import javax.crypto.spec.GCMParameterSpec
  * O token é cifrado com uma chave AES-GCM mantida no Android Keystore.
  */
 object AuthSession {
+    private const val TAG = "TedflixAuthSession"
     private const val AUTH_BASE = "https://authted.onrender.com"
     const val MOVIE_API_BASE = "https://tedtv.onrender.com/api"
     const val MOVIE_API_HOST = "tedtv.onrender.com"
@@ -125,13 +127,47 @@ object AuthSession {
 
     fun token(): String? {
         if (!::appContext.isInitialized) return null
-        val stored = appContext.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
-            .getString(TOKEN_KEY, null) ?: return null
+        val prefs = appContext.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+        val stored = prefs.getString(TOKEN_KEY, null) ?: return null
         return try {
             decrypt(stored)
         } catch (_: Throwable) {
-            clear()
+            // Uma falha ao ler o token corrente não deve apagar os perfis
+            // criptografados. Um deles ainda pode restaurar a sessão ativa.
+            prefs.edit()
+                .remove(TOKEN_KEY)
+                .remove("user_id")
+                .remove("user_email")
+                .remove("user_name")
+                .remove("expires_at")
+                .remove("account_status")
+                .remove("days_remaining")
+                .apply()
             null
+        }
+    }
+
+    /**
+     * Recupera a sessão do perfil ativo quando o token corrente foi perdido,
+     * mas o perfil autenticado continua salvo localmente.
+     */
+    fun restoreActiveProfileIfNeeded(): Boolean {
+        if (!::appContext.isInitialized) return false
+        if (token()?.isNotBlank() == true) return true
+        val stored = readStoredProfiles()
+        if (stored.isEmpty()) return false
+        val prefs = appContext.getSharedPreferences(PROFILES_PREFS, Context.MODE_PRIVATE)
+        val activeId = prefs.getString(ACTIVE_PROFILE_KEY, "").orEmpty().trim()
+        val candidate = stored.firstOrNull { it.id == activeId } ?: stored.first()
+        return try {
+            val accessToken = decrypt(candidate.encryptedToken).trim()
+            if (accessToken.isBlank()) return false
+            saveLogin(accessToken, candidate.user)
+            saveStoredProfiles(stored, candidate.id)
+            true
+        } catch (error: Throwable) {
+            Log.w(TAG, "Não foi possível restaurar o perfil ativo", error)
+            false
         }
     }
 
@@ -179,7 +215,11 @@ object AuthSession {
     } else ""
 
     fun ensureCurrentProfile(defaultName: String, defaultAvatarSeed: String): Profile? {
-        val currentToken = token()?.takeIf { it.isNotBlank() } ?: return null
+        var currentToken = token()?.takeIf { it.isNotBlank() }
+        if (currentToken == null && restoreActiveProfileIfNeeded()) {
+            currentToken = token()?.takeIf { it.isNotBlank() }
+        }
+        currentToken ?: return null
         val stored = readStoredProfiles()
         val existing = stored.firstOrNull { profile ->
             try { decrypt(profile.encryptedToken) == currentToken } catch (_: Throwable) { false }

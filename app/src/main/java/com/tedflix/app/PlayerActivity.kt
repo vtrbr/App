@@ -465,7 +465,9 @@ class PlayerActivity : Activity() {
             val categoria = currentCategoria
             val slug = currentSlug
             val titulo = currentTitle
-            if (!AuthSession.hasToken()) {
+            AuthSession.restoreActiveProfileIfNeeded()
+            val sessionToken = AuthSession.token()?.takeIf { it.isNotBlank() }
+            if (sessionToken == null) {
                 showDiagnosticScreen(
                     "Sessão ausente",
                     IllegalStateException("Faça login para reproduzir este conteúdo."),
@@ -485,7 +487,9 @@ class PlayerActivity : Activity() {
             diagnosticUrl = streamUrl
             markStep("streamUrl montada")
             val buffer = getSharedPreferences(PREFS, MODE_PRIVATE).getString(BUFFER_KEY, "equilibrado")
-            val requestProperties = streamRequestProperties()
+            // Capture o Bearer uma vez: o preflight e o Media3 devem usar a
+            // mesma sessão, sem depender de uma nova leitura concorrente.
+            val requestProperties = streamRequestProperties(sessionToken)
             validationThread?.interrupt()
             validationThread = Thread {
                 var connection: HttpURLConnection? = null
@@ -626,14 +630,14 @@ class PlayerActivity : Activity() {
         }
     }
 
-    private fun streamRequestProperties(): Map<String, String> = buildMap {
+    private fun streamRequestProperties(sessionToken: String? = AuthSession.token()): Map<String, String> = buildMap {
         put("Origin", STREAM_ORIGIN)
         put("Referer", STREAM_REFERER)
         put("Accept", "*/*")
         put("Accept-Language", "pt-BR,pt;q=0.9")
         put("Cache-Control", "no-cache")
         put("Pragma", "no-cache")
-        AuthSession.token()?.takeIf { it.isNotBlank() }?.let { token ->
+        sessionToken?.takeIf { it.isNotBlank() }?.let { token ->
             put("Authorization", "Bearer $token")
         }
     }

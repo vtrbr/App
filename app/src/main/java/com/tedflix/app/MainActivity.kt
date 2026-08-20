@@ -76,6 +76,9 @@ class MainActivity : Activity() {
         window.statusBarColor = Color.rgb(5, 6, 9)
         window.navigationBarColor = Color.rgb(5, 6, 9)
         AuthSession.init(applicationContext)
+        // O token corrente pode ter sido perdido sem que os perfis locais tenham
+        // sido removidos. Restaure o perfil ativo antes de abrir o seletor/WebView.
+        AuthSession.restoreActiveProfileIfNeeded()
         if (!AuthSession.hasToken()) {
             openLogin()
             return
@@ -838,6 +841,7 @@ class MainActivity : Activity() {
         @JavascriptInterface
         fun getProfiles(): String {
             return try {
+                AuthSession.restoreActiveProfileIfNeeded()
                 val user = AuthSession.cachedUser()
                 AuthSession.ensureCurrentProfile(
                     user?.username.orEmpty().ifBlank { user?.email.orEmpty() },
@@ -888,15 +892,19 @@ class MainActivity : Activity() {
         @JavascriptInterface
         fun updateStoredProfile(profileId: String?, name: String?, avatarSeed: String?): String {
             return try {
+                AuthSession.restoreActiveProfileIfNeeded()
                 val requestedId = profileId.orEmpty().trim()
                 val user = AuthSession.cachedUser()
-                val ensured = if (requestedId.isBlank()) {
+                val profiles = AuthSession.profiles()
+                val requested = profiles.firstOrNull { it.id == requestedId }
+                val active = profiles.firstOrNull { it.id == AuthSession.activeProfileId() }
+                val ensured = if (requested == null && active == null) {
                     AuthSession.ensureCurrentProfile(
                         user?.username.orEmpty().ifBlank { user?.email.orEmpty() },
                         "tedflix-avatar-01",
                     )
                 } else null
-                val id = requestedId.ifBlank { ensured?.id.orEmpty() }
+                val id = requested?.id ?: active?.id ?: ensured?.id.orEmpty()
                 if (id.isBlank()) {
                     return org.json.JSONObject()
                         .put("success", false)
