@@ -346,19 +346,29 @@ export default async function paginaConfiguracoes(raiz) {
       toast("Digite um nome de perfil válido.", "error");
       return;
     }
-    const profileId = String(perfil?.id || "").trim();
+
+    // O perfil pode ter sido carregado antes da ponte concluir a sincronização.
+    // Atualizar aqui evita rejeitar uma referência visual com ID legado/vazio.
+    atualizarPerfis();
+    const requestedId = String(perfil?.id || "").trim();
+    const resolved = state.perfis.find((item) => item.id === requestedId)
+      || state.perfis.find((item) => item.id === state.ativo)
+      || state.perfis[0];
+    const profileId = String(resolved?.id || "").trim();
     if (!profileId) {
-      toast("Perfil inválido. Reabra a tela de perfis e tente novamente.", "error");
+      toast("Sessão de perfil indisponível. Volte à tela de perfis e selecione o perfil novamente.", "error");
       return;
     }
-    const resposta = respostaAndroid("updateStoredProfile", profileId, valor, String(avatarSeed || DEFAULT_SEED));
+
+    const resposta = respostaAndroid("updateStoredProfile", profileId, valor, String(avatarSeed || resolved.avatarSeed || DEFAULT_SEED));
     if (!resposta.success) {
       toast(resposta.error || "Não foi possível salvar o perfil.", "error");
       return;
     }
     atualizarPerfis();
+    const atualizado = state.perfis.find((item) => item.id === profileId) || { ...resolved, id: profileId, name: valor, avatarSeed };
     toast("Perfil atualizado.");
-    renderProfileEdit(state.perfis.find((item) => item.id === (perfil?.id || "")) || perfil, valor, avatarSeed, state.editBack || renderProfiles);
+    renderProfileEdit(atualizado, valor, avatarSeed, state.editBack || renderProfiles);
   }
 
   function renderAddProfile(draft = {}) {

@@ -171,8 +171,11 @@ object AuthSession {
     fun profiles(): List<Profile> = readStoredProfiles().map { it.toPublic() }
 
     fun activeProfileId(): String = if (::appContext.isInitialized) {
-        appContext.getSharedPreferences(PROFILES_PREFS, Context.MODE_PRIVATE)
-            .getString(ACTIVE_PROFILE_KEY, "").orEmpty()
+        val storedId = appContext.getSharedPreferences(PROFILES_PREFS, Context.MODE_PRIVATE)
+            .getString(ACTIVE_PROFILE_KEY, "").orEmpty().trim()
+        val profiles = readStoredProfiles()
+        profiles.firstOrNull { it.id == storedId }?.id
+            ?: profiles.firstOrNull()?.id.orEmpty()
     } else ""
 
     fun ensureCurrentProfile(defaultName: String, defaultAvatarSeed: String): Profile? {
@@ -239,7 +242,10 @@ object AuthSession {
                         user = user,
                         encryptedToken = encrypt(token),
                     )
-                    saveStoredProfiles(readStoredProfiles() + profile, activeProfileId())
+                    // O perfil recém-criado precisa ser persistido como ativo. Manter
+                    // um ACTIVE_PROFILE_KEY antigo deixa a tela de Configurações com
+                    // um perfil visual sem correspondência no armazenamento local.
+                    saveStoredProfiles(readStoredProfiles() + profile, profile.id)
                     Result(true, profile.toPublic(), statusCode = response.statusCode)
                 }
             }
@@ -256,7 +262,9 @@ object AuthSession {
             ) else profile
         }
         if (updated.none { it.id == id }) return false
-        saveStoredProfiles(updated, activeProfileId())
+        val active = activeProfileId()
+        val nextActive = if (updated.any { it.id == active }) active else id
+        saveStoredProfiles(updated, nextActive)
         return true
     }
 

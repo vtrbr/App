@@ -505,7 +505,14 @@ class PlayerActivity : Activity() {
                     val content = preview.trimStart().removePrefix("\uFEFF").trimStart()
                     val details = "HTTP status: $status\nContent-Type: $contentType\nPrévia:\n${preview.take(1200)}"
                     if (status !in 200..299) {
-                        throw StreamValidationException("A API/CDN respondeu HTTP $status", details)
+                        val upstreamUnauthorized = status == 500 &&
+                            preview.contains("status code 401", ignoreCase = true)
+                        val message = if (upstreamUnauthorized) {
+                            "O servidor de filmes respondeu HTTP 500 porque a fonte do vídeo recusou a autenticação (401 interno)."
+                        } else {
+                            "A API/CDN respondeu HTTP $status"
+                        }
+                        throw StreamValidationException(message, details)
                     }
                     if (!content.startsWith("#EXTM3U")) {
                         throw StreamValidationException("A resposta não é uma playlist HLS (#EXTM3U ausente)", details)
