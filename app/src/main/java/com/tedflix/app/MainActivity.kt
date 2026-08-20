@@ -470,9 +470,9 @@ class MainActivity : Activity() {
 
                 override fun shouldInterceptRequest(view: WebView, request: WebResourceRequest): android.webkit.WebResourceResponse? {
                     val response = AuthSession.proxyMovieRequest(request)
-                    if (response != null && response.statusCode in 401..403) {
-                        handleSessionExpired()
-                    }
+                    // Não transformar uma falha de autorização do servidor de filmes
+                    // em logout automático. O token pode continuar válido no auth;
+                    // o fetch do WebView recebe o status e a tela mostra o erro real.
                     return if (response != null) AuthSession.toWebResourceResponse(response)
                     else super.shouldInterceptRequest(view, request)
                 }

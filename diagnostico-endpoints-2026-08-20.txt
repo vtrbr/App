@@ -1,0 +1,16 @@
+Diagnóstico pós-login — 2026-08-20
+
+Respostas HTTP sem credenciais:
+- https://auth.cryptitys.site/ -> HTTP 200, application/json; resposta informa Tedflix Auth Server online e endpoints /auth/*, /users/*, /admin/*.
+- https://ted.cryptitys.site/ -> HTTP 404 em GET / (raiz sem rota pública).
+- https://ted.cryptitys.site/api/ -> HTTP 401, JSON {"success":false,"error":"Token não fornecido"}.
+
+Os endpoints definitivos estão online. O fato de a raiz de ted.cryptitys.site retornar 404 não implica falha da API; a API exige Bearer Token em /api/.
+
+Arquivos envolvidos no diagnóstico:
+- AuthActivity.kt: após login bem-sucedido chama openMain(), que inicia MainActivity.
+- MainActivity.kt: onCreate chama AuthSession.init, verifica token, refreshHeaderBadges em thread e showProfileChooser; loadProfiles chama ensureCurrentProfile e depois AuthSession.profiles; selecionar perfil chama setupWebView.
+- AuthSession.kt: proxy e rawRequest montam chamadas de filmes para https://ted.cryptitys.site e auth para https://auth.cryptitys.site.
+- WebView usa LOAD_NO_CACHE e shouldInterceptRequest via AuthSession.proxyMovieRequest.
+
+Observação: a investigação deve verificar se o bloqueio ocorre antes do setupWebView, durante as chamadas concorrentes de badges/profiles, ou no proxy das requisições JS.

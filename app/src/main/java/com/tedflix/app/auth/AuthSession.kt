@@ -590,7 +590,12 @@ object AuthSession {
         return try {
             val response = rawRequest(method, path, body, includeBearer = true)
             val json = parseObject(response.body)
-            if (response.statusCode == 401 || response.statusCode == 403) {
+            // O servidor de filmes e o servidor de autenticação são serviços separados.
+            // Um 401 em /api/* pode indicar apenas que os secrets de validação dos
+            // servidores ainda não estão sincronizados; não devemos apagar uma sessão
+            // que continua válida em /auth/verify. A sessão só é removida quando a
+            // própria API de autenticação rejeita o token.
+            if ((response.statusCode == 401 || response.statusCode == 403) && !path.startsWith("/api/")) {
                 clear()
             }
             if (response.statusCode in 200..299) {
