@@ -733,7 +733,7 @@ class PlayerActivity : Activity() {
     }
 
     private fun choose(title: String, labels: List<String>, selected: (String) -> Unit) {
-        val dialog = android.app.AlertDialog.Builder(this)
+        val dialog = android.app.AlertDialog.Builder(this, R.style.TedflixDialog)
             .setTitle(title)
             .setItems(labels.toTypedArray()) { _, which ->
                 selected(labels[which])

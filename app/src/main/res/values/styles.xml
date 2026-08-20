@@ -11,6 +11,17 @@
         <item name="android:windowBackground">@drawable/splash_screen</item>
     </style>
 
+    <style name="TedflixDialog" parent="android:style/Theme.Material.Dialog.Alert">
+        <item name="android:windowBackground">@drawable/tedflix_dialog_background</item>
+        <item name="android:colorAccent">#E51C2A</item>
+        <item name="android:textColorPrimary">#FFFFFF</item>
+        <item name="android:textColorSecondary">#B8BBC6</item>
+        <item name="android:textColorHint">#858895</item>
+        <item name="android:windowMinWidthMajor">88%</item>
+        <item name="android:windowMinWidthMinor">92%</item>
+        <item name="android:windowAnimationStyle">@android:style/Animation.Dialog</item>
+    </style>
+
     <style name="Theme.Tedflix.Player" parent="android:style/Theme.Material.NoActionBar">
         <item name="android:fontFamily">sans</item>
         <item name="android:windowActionModeOverlay">true</item>

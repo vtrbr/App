@@ -50,11 +50,22 @@ img { display: block; max-width: 100%; }
 }
 .brand { font-family: var(--font-display); font-size: 22px; font-weight: 700; letter-spacing: 0.16em; }
 .brand b { color: var(--primary); }
-.icon-btn {
-  display: grid; place-items: center; width: 38px; height: 38px;
+ .icon-btn {
+  position: relative; display: grid; place-items: center; width: 38px; height: 38px;
   border-radius: 999px; background: var(--surface);
 }
+
 .icon-btn svg { width: 19px; height: 19px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; }
+.topbar-badge {
+  position: absolute; top: -4px; right: -4px; z-index: 1;
+  display: none; min-width: 16px; height: 16px; padding: 0 4px;
+  align-items: center; justify-content: center;
+  border: 2px solid var(--background); border-radius: 999px;
+  background: var(--primary); color: #fff;
+  font-size: 9px; line-height: 1; font-weight: 800;
+  box-sizing: border-box; pointer-events: none;
+}
+.topbar-badge.visible { display: flex; }
 
 /* ---------- navegação inferior ---------- */
 .tabbar {

@@ -13,6 +13,7 @@ import android.os.Bundle
 import android.util.Log
 import android.view.Gravity
 import android.view.View
+import android.view.ViewOutlineProvider
 import android.webkit.JavascriptInterface
 import android.webkit.WebChromeClient
 import android.webkit.WebResourceRequest
@@ -65,6 +66,8 @@ class MainActivity : Activity() {
     @Volatile private var historyRefreshInFlight = false
     @Volatile private var remoteHistoryProfileId = ""
     @Volatile private var remoteHistoryCache: List<AuthSession.HistoryItem> = emptyList()
+    @Volatile private var unreadNotificationCount = 0
+    @Volatile private var favoriteCount = 0
 
     @SuppressLint("SetJavaScriptEnabled")
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -79,7 +82,7 @@ class MainActivity : Activity() {
 
         NotificationHelper.createChannel(this)
         requestNotificationPermissionIfNeeded(this)
-        publishUnreadNotifications()
+        refreshHeaderBadges(showSystemNotifications = true)
         val previousCrash = TedflixApplication.consumeLastCrash(this)
         if (!previousCrash.isNullOrBlank()) {
             showCrashRecovery(previousCrash)
@@ -88,14 +91,43 @@ class MainActivity : Activity() {
         showProfileChooser()
     }
 
-    private fun publishUnreadNotifications() {
+    private fun refreshHeaderBadges(showSystemNotifications: Boolean = false) {
         Thread {
-            val result = AuthSession.notifications()
-            if (!result.ok) return@Thread
-            result.value.orEmpty().filterNot { it.read }.forEachIndexed { index, item ->
-                runOnUiThread { NotificationHelper.show(this, 5000 + index, item.title, item.body) }
+            val notifications = AuthSession.notifications()
+            val favorites = AuthSession.listFavorites()
+            unreadNotificationCount = if (notifications.ok) notifications.value.orEmpty().count { !it.read } else 0
+            favoriteCount = if (favorites.ok) favorites.value.orEmpty().size else 0
+            if (showSystemNotifications && notifications.ok) {
+                notifications.value.orEmpty().filterNot { it.read }.forEachIndexed { index, item ->
+                    runOnUiThread { NotificationHelper.show(this, 5000 + index, item.title, item.body) }
+                }
             }
-        }.start()
+            publishBadgeCounts()
+        }.apply { name = "TedflixHeaderBadges"; start() }
+    }
+
+    private fun publishBadgeCounts() {
+        if (!::webView.isInitialized || isFinishing || isDestroyed) return
+        val unread = unreadNotificationCount.coerceAtLeast(0)
+        val favorites = favoriteCount.coerceAtLeast(0)
+        webView.post {
+            if (isFinishing || isDestroyed) return@post
+            webView.evaluateJavascript(
+                """(() => {
+                    const applyBadge = (id, value) => {
+                        const badge = document.getElementById(id);
+                        if (!badge) return;
+                        const count = Number(value) || 0;
+                        badge.textContent = count > 99 ? '99+' : String(count);
+                        badge.classList.toggle('visible', count > 0);
+                        badge.setAttribute('aria-hidden', count > 0 ? 'false' : 'true');
+                    };
+                    applyBadge('notif-badge', $unread);
+                    applyBadge('fav-badge', $favorites);
+                })();""".trimIndent(),
+                null,
+            )
+        }
     }
 
     private fun showProfileChooser() {
@@ -186,19 +218,21 @@ class MainActivity : Activity() {
         }
         val frame = android.widget.FrameLayout(this)
         val avatar = ImageView(this).apply {
-            tag = profile.avatarSeed; scaleType = ImageView.ScaleType.CENTER_CROP
+            tag = profile.avatarSeed; scaleType = ImageView.ScaleType.FIT_CENTER
             contentDescription = profile.name; clipToOutline = true
+            outlineProvider = ViewOutlineProvider.BACKGROUND
+            setPadding(dp(4), dp(4), dp(4), dp(4))
             background = GradientDrawable().apply {
                 shape = GradientDrawable.OVAL; setColor(Color.argb(92, 20, 20, 25))
                 setStroke(if (selected) dp(3) else dp(1), if (selected) Color.rgb(229, 9, 20) else Color.argb(90, 255, 255, 255))
             }
         }
-        frame.addView(avatar, android.widget.FrameLayout.LayoutParams(dp(94), dp(94), Gravity.CENTER))
+        frame.addView(avatar, android.widget.FrameLayout.LayoutParams(dp(96), dp(96), Gravity.CENTER))
         if (selected) frame.addView(TextView(this).apply {
             text = "✓"; textSize = 16f; gravity = Gravity.CENTER; setTextColor(Color.WHITE)
             background = GradientDrawable().apply { shape = GradientDrawable.OVAL; setColor(Color.rgb(229, 9, 20)) }
         }, android.widget.FrameLayout.LayoutParams(dp(28), dp(28), Gravity.TOP or Gravity.END))
-        cell.addView(frame, LinearLayout.LayoutParams(dp(104), dp(100)))
+        cell.addView(frame, LinearLayout.LayoutParams(dp(104), dp(106)))
         cell.addView(TextView(this).apply {
             text = profile.name; textSize = 14f; setTextColor(if (selected) Color.WHITE else Color.LTGRAY)
             gravity = Gravity.CENTER; maxLines = 1; ellipsize = android.text.TextUtils.TruncateAt.END
@@ -214,6 +248,7 @@ class MainActivity : Activity() {
             Toast.makeText(this, activated.message.ifBlank { "Não foi possível selecionar este perfil." }, Toast.LENGTH_LONG).show()
             return
         }
+        refreshHeaderBadges()
         getSharedPreferences(PROFILE_PREFS, Context.MODE_PRIVATE).edit().putString("selected_profile_id", profile.id).apply()
         content.visibility = View.GONE; shade.alpha = 0.98f
         val loader = LinearLayout(this).apply {
@@ -248,7 +283,10 @@ class MainActivity : Activity() {
             try {
                 val connection = URL(avatarUrl(seed)).openConnection() as HttpURLConnection
                 connection.connectTimeout = 8_000; connection.readTimeout = 8_000; connection.instanceFollowRedirects = true
-                val bitmap = connection.inputStream.use { BitmapFactory.decodeStream(it) }; connection.disconnect()
+                val bitmap = if (connection.responseCode in 200..299) {
+                    connection.inputStream.use { BitmapFactory.decodeStream(it) }
+                } else null
+                connection.disconnect()
                 if (bitmap != null) runOnUiThread { if (image.tag == seed) image.setImageBitmap(bitmap) }
             } catch (error: Throwable) { Log.w("TedflixProfiles", "Falha ao carregar avatar DiceBear $seed", error) }
         }.apply { name = "TedflixAvatar-$seed"; start() }
@@ -257,8 +295,19 @@ class MainActivity : Activity() {
     private fun showAddProfileDialog() {
         val panel = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(dp(24), dp(8), dp(24), 0) }
         val selectedSeed = arrayOf(DEFAULT_AVATAR_SEEDS[loadProfiles().size % DEFAULT_AVATAR_SEEDS.size])
-        val preview = ImageView(this).apply { scaleType = ImageView.ScaleType.CENTER_CROP; background = GradientDrawable().apply { shape = GradientDrawable.OVAL; setColor(Color.LTGRAY) } }
-        panel.addView(preview, LinearLayout.LayoutParams(dp(92), dp(92)).apply { gravity = Gravity.CENTER_HORIZONTAL; bottomMargin = dp(8) })
+        val preview = ImageView(this).apply {
+            tag = selectedSeed[0]
+            scaleType = ImageView.ScaleType.FIT_CENTER
+            clipToOutline = true
+            outlineProvider = ViewOutlineProvider.BACKGROUND
+            setPadding(dp(4), dp(4), dp(4), dp(4))
+            background = GradientDrawable().apply {
+                shape = GradientDrawable.OVAL
+                setColor(Color.rgb(24, 26, 34))
+                setStroke(dp(1), Color.rgb(70, 73, 84))
+            }
+        }
+        panel.addView(preview, LinearLayout.LayoutParams(dp(96), dp(96)).apply { gravity = Gravity.CENTER_HORIZONTAL; bottomMargin = dp(8) })
         loadDiceBearAvatar(preview, selectedSeed[0])
         panel.addView(Button(this).apply {
             text = "Escolher outro avatar"; setAllCaps(false)
@@ -272,7 +321,7 @@ class MainActivity : Activity() {
         panel.addView(emailInput, LinearLayout.LayoutParams(-1, dp(54)))
         val passwordInput = EditText(this).apply { hint = "Senha"; setSingleLine(true); inputType = android.text.InputType.TYPE_CLASS_TEXT or android.text.InputType.TYPE_TEXT_VARIATION_PASSWORD }
         panel.addView(passwordInput, LinearLayout.LayoutParams(-1, dp(54)))
-        val dialog = AlertDialog.Builder(this).setTitle("Adicionar perfil").setView(ScrollView(this).apply { addView(panel) }).setNegativeButton("Cancelar", null).setPositiveButton("Validar e adicionar", null).create()
+        val dialog = AlertDialog.Builder(this, R.style.TedflixDialog).setTitle("Adicionar perfil").setView(ScrollView(this).apply { addView(panel) }).setNegativeButton("Cancelar", null).setPositiveButton("Validar e adicionar", null).create()
         dialog.setOnShowListener {
             dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {
                 val name = nameInput.text.toString().trim()
@@ -316,8 +365,16 @@ class MainActivity : Activity() {
             val row = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER }
             seeds.forEach { seed ->
                 val avatar = ImageView(this).apply {
-                    scaleType = ImageView.ScaleType.CENTER_CROP
-                    background = GradientDrawable().apply { shape = GradientDrawable.OVAL; setColor(Color.argb(70, 30, 30, 35)); setStroke(if (seed == currentSeed) dp(3) else dp(1), if (seed == currentSeed) Color.rgb(229, 9, 20) else Color.GRAY) }
+                    tag = seed
+                    scaleType = ImageView.ScaleType.FIT_CENTER
+                    clipToOutline = true
+                    outlineProvider = ViewOutlineProvider.BACKGROUND
+                    setPadding(dp(4), dp(4), dp(4), dp(4))
+                    background = GradientDrawable().apply {
+                        shape = GradientDrawable.OVAL
+                        setColor(Color.rgb(24, 26, 34))
+                        setStroke(if (seed == currentSeed) dp(3) else dp(1), if (seed == currentSeed) Color.rgb(229, 9, 20) else Color.rgb(70, 73, 84))
+                    }
                     setOnClickListener { onPick(seed); picker?.dismiss() }
                 }
                 loadDiceBearAvatar(avatar, seed)
@@ -325,7 +382,7 @@ class MainActivity : Activity() {
             }
             grid.addView(row)
         }
-        picker = AlertDialog.Builder(this).setTitle("Escolha seu avatar").setView(ScrollView(this).apply { addView(grid) }).setNegativeButton("Cancelar", null).create()
+        picker = AlertDialog.Builder(this, R.style.TedflixDialog).setTitle("Escolha seu avatar").setView(ScrollView(this).apply { addView(grid) }).setNegativeButton("Cancelar", null).create()
         picker.show()
     }
 
@@ -334,7 +391,14 @@ class MainActivity : Activity() {
         val profiles = loadProfiles()
         profiles.forEach { profile ->
             val row = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL; setPadding(0, dp(6), 0, dp(6)) }
-            val avatar = ImageView(this).apply { scaleType = ImageView.ScaleType.CENTER_CROP; background = GradientDrawable().apply { shape = GradientDrawable.OVAL } }
+            val avatar = ImageView(this).apply {
+                tag = profile.avatarSeed
+                scaleType = ImageView.ScaleType.FIT_CENTER
+                clipToOutline = true
+                outlineProvider = ViewOutlineProvider.BACKGROUND
+                setPadding(dp(3), dp(3), dp(3), dp(3))
+                background = GradientDrawable().apply { shape = GradientDrawable.OVAL; setColor(Color.rgb(24, 26, 34)) }
+            }
             loadDiceBearAvatar(avatar, profile.avatarSeed)
             row.addView(avatar, LinearLayout.LayoutParams(dp(54), dp(54)))
             row.addView(TextView(this).apply { text = profile.name; textSize = 15f; setTextColor(Color.WHITE); setPadding(dp(10), 0, dp(4), 0) }, LinearLayout.LayoutParams(0, -2, 1f))
@@ -342,12 +406,12 @@ class MainActivity : Activity() {
             if (profiles.size > 1) row.addView(Button(this).apply { text = "Excluir"; setAllCaps(false); setOnClickListener { confirmDeleteProfile(profile) } }, LinearLayout.LayoutParams(dp(82), dp(44)))
             panel.addView(row)
         }
-        AlertDialog.Builder(this).setTitle("Gerenciar perfis").setView(ScrollView(this).apply { addView(panel) }).setNegativeButton("Fechar", null).setPositiveButton("Adicionar perfil") { _, _ -> showAddProfileDialog() }.show()
+        AlertDialog.Builder(this, R.style.TedflixDialog).setTitle("Gerenciar perfis").setView(ScrollView(this).apply { addView(panel) }).setNegativeButton("Fechar", null).setPositiveButton("Adicionar perfil") { _, _ -> showAddProfileDialog() }.show()
     }
 
     private fun showEditProfileDialog(profile: LocalProfile) {
         val input = EditText(this).apply { setSingleLine(true); setText(profile.name); hint = "Nome do perfil" }
-        AlertDialog.Builder(this).setTitle("Editar perfil").setView(input).setNegativeButton("Cancelar", null).setPositiveButton("Salvar") { _, _ ->
+        AlertDialog.Builder(this, R.style.TedflixDialog).setTitle("Editar perfil").setView(input).setNegativeButton("Cancelar", null).setPositiveButton("Salvar") { _, _ ->
             val name = input.text.toString().trim().ifBlank { profile.name }
             updateProfile(profile, name = name)
             showManageProfilesDialog()
@@ -363,7 +427,7 @@ class MainActivity : Activity() {
             Toast.makeText(this, "O último perfil não pode ser excluído.", Toast.LENGTH_SHORT).show()
             return
         }
-        AlertDialog.Builder(this).setTitle("Excluir perfil?").setMessage("Tem certeza que deseja excluir ${profile.name}?").setNegativeButton("Cancelar", null).setPositiveButton("Excluir") { _, _ ->
+        AlertDialog.Builder(this, R.style.TedflixDialog).setTitle("Excluir perfil?").setMessage("Tem certeza que deseja excluir ${profile.name}?").setNegativeButton("Cancelar", null).setPositiveButton("Excluir") { _, _ ->
             if (AuthSession.deleteProfile(profile.id)) {
                 val remaining = loadProfiles()
                 getSharedPreferences(PROFILE_PREFS, Context.MODE_PRIVATE).edit()
@@ -405,6 +469,11 @@ class MainActivity : Activity() {
                     }
                     return if (response != null) AuthSession.toWebResourceResponse(response)
                     else super.shouldInterceptRequest(view, request)
+                }
+
+                override fun onPageFinished(view: WebView, url: String) {
+                    super.onPageFinished(view, url)
+                    publishBadgeCounts()
                 }
             }
             addJavascriptInterface(AndroidPlayerBridge(this@MainActivity), "AndroidPlayer")
@@ -485,6 +554,7 @@ class MainActivity : Activity() {
 
     override fun onResume() {
         super.onResume()
+        if (AuthSession.hasToken()) refreshHeaderBadges()
         if (::webView.isInitialized && playerWasOpened) {
             playerWasOpened = false
             webView.postDelayed({
@@ -726,6 +796,7 @@ class MainActivity : Activity() {
         fun toggleFavorite(filmeId: String?, titulo: String?, thumb: String?): String {
             return try {
                 val result = AuthSession.toggleFavorite(filmeId.orEmpty(), titulo.orEmpty(), thumb.orEmpty())
+                activity.refreshHeaderBadges()
                 org.json.JSONObject().apply {
                     put("success", result.ok)
                     if (result.value != null) put("favorito", result.value)
