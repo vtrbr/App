@@ -75,10 +75,14 @@ function tituloStatus() {
 }
 
 function cabecalho(titulo, onBack, acao, textoAcao = "") {
+  window.scrollTo({ top: 0, left: 0, behavior: "auto" });
+  document.documentElement.scrollLeft = 0;
   const header = el("div", { class: "cfg-screen-head" });
   const left = el("div", { class: "cfg-screen-head-left" });
   if (onBack) {
     const back = button("", "cfg-back", onBack);
+    back.setAttribute("aria-label", "Voltar para Configurações");
+    back.setAttribute("title", "Voltar para Configurações");
     back.append(icon("back"));
     left.append(back);
   }
