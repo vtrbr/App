@@ -477,14 +477,13 @@ body.imersivo .topbar, body.imersivo .tabbar { display: none; }
 /* ---------- configurações Tedflix ---------- */
 .cfg-shell { width: 100%; max-width: 920px; min-width: 0; margin: 0 auto; padding: 8px 16px 36px; overflow-x: hidden; overflow-y: visible; }
 .cfg-screen-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; width: 100%; min-width: 0; min-height: 48px; margin: 4px 0 4px; }
-.cfg-screen-head-left { display: flex; align-items: center; flex: 1 1 auto; min-width: 0; gap: 8px; overflow: hidden; }
-.cfg-screen-head h1 { flex: 1 1 auto; min-width: 0; overflow: hidden; font-size: clamp(18px, 6vw, 25px); text-overflow: ellipsis; text-transform: uppercase; white-space: nowrap; line-height: 1; }
-.cfg-screen-head .cfg-back { flex: 0 0 38px; }
-.cfg-back, .cfg-head-action { display: inline-grid; place-items: center; min-width: 38px; height: 38px; border-radius: 999px; }
-.cfg-back { flex: 0 0 38px; background: var(--surface); border: 1px solid color-mix(in oklab, var(--foreground) 8%, transparent); color: var(--foreground); overflow: hidden; }
-.cfg-back::before { content: "‹"; display: block; color: currentColor; font-family: Arial, sans-serif; font-size: 34px; font-weight: 300; line-height: 30px; transform: translate(-1px, -1px); }
-.cfg-back svg { display: none; }
-.cfg-head-action { flex: 0 0 auto; max-width: 35%; padding: 0 8px; overflow: hidden; color: var(--primary); font-weight: 800; text-overflow: ellipsis; white-space: nowrap; }
+.cfg-screen-head-left { display: flex; align-items: center; flex: 1 1 auto; min-width: 0; gap: 12px; overflow: visible; }
+.cfg-screen-head h1 { flex: 1 1 auto; min-width: 0; max-width: 100%; overflow: hidden; font-size: clamp(24px, 5vw, 36px); text-overflow: ellipsis; text-transform: uppercase; white-space: nowrap; line-height: 1; }
+.cfg-screen-head .cfg-back { flex: 0 0 68px; }
+.cfg-back, .cfg-head-action { display: inline-grid; place-items: center; min-width: 68px; height: 68px; border-radius: 999px; }
+.cfg-back { flex: 0 0 68px; width: 68px; background: #171820; border: 1px solid rgba(255,255,255,.12); color: #fff; overflow: visible; }
+.cfg-back-glyph { display: block; color: #fff; font-family: Arial, sans-serif; font-size: 46px; font-weight: 300; line-height: 1; transform: translateY(-2px); }
+.cfg-head-action { flex: 0 0 auto; min-width: 0; max-width: 35%; padding: 0 8px; overflow: hidden; color: var(--primary); font-size: clamp(16px, 3vw, 22px); font-weight: 800; text-overflow: ellipsis; white-space: nowrap; }
 .cfg-lead { margin: 0 0 16px; color: var(--muted-foreground); font-size: 13px; line-height: 1.45; }
 .cfg-account-hero { overflow: hidden; margin: 8px 0 16px; border: 1px solid var(--border); border-radius: 22px; background: linear-gradient(145deg, color-mix(in oklab, var(--surface) 94%, #000), var(--surface)); box-shadow: 0 18px 42px rgba(0,0,0,.16); }
 .cfg-account-profile { display: flex; align-items: center; gap: 14px; width: 100%; min-width: 0; padding: 18px; text-align: left; }
@@ -670,7 +669,7 @@ html, body, #app, .app, .page, .cfg, .cfg-shell {
 }
 
 .cfg-screen-head-left {
-  overflow: hidden;
+  overflow: visible;
 }
 
 .cfg-screen-head h1 {
@@ -690,29 +689,33 @@ html, body, #app, .app, .page, .cfg, .cfg-shell {
 
 .cfg-back {
   position: relative;
-  flex: 0 0 40px;
-  width: 40px;
-  height: 40px;
+  display: grid;
+  place-items: center;
+  flex: 0 0 68px;
+  width: 68px;
+  min-width: 68px;
+  height: 68px;
+  color: #fff !important;
+  background: #171820;
+  border: 1px solid rgba(255,255,255,.12);
+  border-radius: 999px;
+  overflow: visible;
+}
+
+.cfg-back-glyph {
+  display: block !important;
   color: #fff !important;
   font-family: Arial, sans-serif;
-  font-size: 34px;
+  font-size: 46px;
   font-weight: 300;
-  line-height: 36px;
-  text-align: center;
-  text-indent: -1px;
-  overflow: hidden;
-}
-
-.cfg-back::before {
-  content: none;
-}
-
-.cfg-back svg,
-.cfg-back .cfg-icon {
-  display: none !important;
+  line-height: 1;
+  transform: translateY(-2px);
 }
 
 .cfg-profile-editor {
+  width: 100%;
+  max-width: 760px;
+  margin-inline: auto;
   overflow: visible;
 }
 
@@ -725,11 +728,16 @@ html, body, #app, .app, .page, .cfg, .cfg-shell {
 }
 
 .cfg-avatar-strip {
+  display: flex;
   flex-wrap: nowrap;
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
   overflow-x: auto;
   overflow-y: hidden;
   overscroll-behavior-x: contain;
   touch-action: pan-x;
+  -webkit-overflow-scrolling: touch;
 }
 
 .cfg-strip-option {
@@ -740,11 +748,12 @@ html, body, #app, .app, .page, .cfg, .cfg-shell {
 
 @media (max-width: 430px) {
   .cfg-shell { padding-inline: 12px; }
-  .cfg-screen-head { gap: 5px; }
-  .cfg-screen-head-left { gap: 5px; }
-  .cfg-screen-head h1 { font-size: clamp(18px, 6.5vw, 23px); }
-  .cfg-head-action { max-width: 25vw; padding-inline: 2px; font-size: 12px; }
-  .cfg-back { flex-basis: 38px; width: 38px; height: 38px; }
+  .cfg-screen-head { gap: 6px; min-height: 60px; }
+  .cfg-screen-head-left { gap: 7px; }
+  .cfg-screen-head h1 { font-size: clamp(22px, 7vw, 30px); }
+  .cfg-head-action { max-width: 24vw; padding-inline: 2px; font-size: 15px; }
+  .cfg-back { flex-basis: 58px; width: 58px; min-width: 58px; height: 58px; }
+  .cfg-back-glyph { font-size: 39px; }
   .cfg-editor-preview { width: min(52vw, 176px); height: min(52vw, 176px); }
   .cfg-form-card { padding-inline: 14px; }
 }
@@ -757,12 +766,11 @@ html, body, #app, .app, .page, .cfg, .cfg-shell {
 /* Rolagem vertical dedicada para Configurações; evita conteúdo escondido pela tabbar. */
 .cfg-shell {
   min-height: calc(100dvh - 118px);
-  max-height: calc(100dvh - 118px);
+  max-height: none;
   overflow-x: hidden;
-  overflow-y: auto;
-  overscroll-behavior-y: contain;
-  -webkit-overflow-scrolling: touch;
-  padding-bottom: 116px;
+  overflow-y: visible;
+  overscroll-behavior-y: auto;
+  padding-bottom: calc(116px + env(safe-area-inset-bottom));
 }
 
 .cfg-profile-editor,

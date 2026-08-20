@@ -80,10 +80,10 @@ function cabecalho(titulo, onBack, acao, textoAcao = "") {
   const header = el("div", { class: "cfg-screen-head" });
   const left = el("div", { class: "cfg-screen-head-left" });
   if (onBack) {
-    const back = button("←", "cfg-back", onBack);
-    back.setAttribute("style", "display:grid;place-items:center;width:40px;min-width:40px;height:40px;padding:0;color:#ffffff!important;background:#171820;border:1px solid rgba(255,255,255,.10);border-radius:999px;font-family:Arial,sans-serif;font-size:27px;font-weight:400;line-height:1;text-indent:0;overflow:hidden;");
-    back.setAttribute("aria-label", "Voltar para Configurações");
-    back.setAttribute("title", "Voltar para Configurações");
+    const back = el("button", { class: "cfg-back", type: "button", "aria-label": "Voltar", title: "Voltar" }, [
+      el("span", { class: "cfg-back-glyph", "aria-hidden": "true" }, "←"),
+    ]);
+    back.addEventListener("click", onBack);
     left.append(back);
   }
   left.append(el("h1", {}, titulo));
@@ -278,7 +278,7 @@ export default async function paginaConfiguracoes(raiz) {
         imgAvatar(perfil, "cfg-manage-avatar", 128),
         el("div", { class: "cfg-manage-copy" }, [el("strong", {}, perfil.name), el("small", {}, perfil.id === state.ativo ? "Perfil principal" : "Perfil adicional")]),
         (() => {
-          const edit = button("", "cfg-icon-button", () => renderProfileEdit(perfil));
+          const edit = button("", "cfg-icon-button", () => renderProfileEdit(perfil, perfil.name, perfil.avatarSeed, renderManageProfiles));
           edit.append(icon("pencil"));
           return edit;
         })(),
@@ -307,18 +307,19 @@ export default async function paginaConfiguracoes(raiz) {
     page.append(grid, button("Cancelar", "cfg-cancel-button", onBack || (() => renderProfileEdit(state.perfilEditando))));
   }
 
-  function renderProfileEdit(perfil, draftNome = perfil?.name || "", draftAvatar = perfil?.avatarSeed || DEFAULT_SEED) {
+  function renderProfileEdit(perfil, draftNome = perfil?.name || "", draftAvatar = perfil?.avatarSeed || DEFAULT_SEED, onBack = renderProfiles) {
     state.perfilEditando = perfil;
+    state.editBack = onBack;
     state.draftNome = draftNome;
     state.draftAvatar = draftAvatar;
     page.innerHTML = "";
-    page.append(cabecalho("Editar perfil", renderProfiles, () => salvarPerfil(perfil, nameInput.value, state.draftAvatar), "Salvar"));
+    page.append(cabecalho("Editar perfil", onBack, () => salvarPerfil(perfil, nameInput.value, state.draftAvatar), "Salvar"));
     const editor = el("section", { class: "cfg-profile-editor" });
     const preview = el("div", { class: "cfg-editor-preview" }, [
       imgAvatar({ avatarSeed: state.draftAvatar, name: perfil?.name || "Avatar" }, "cfg-editor-avatar", 320),
       el("span", { class: "cfg-editor-camera" }, [icon("camera")]),
     ]);
-    preview.addEventListener("click", () => renderAvatarPicker(state.draftAvatar, (seed) => renderProfileEdit(perfil, nameInput.value, seed), () => renderProfileEdit(perfil, nameInput.value, state.draftAvatar)));
+    preview.addEventListener("click", () => renderAvatarPicker(state.draftAvatar, (seed) => renderProfileEdit(perfil, nameInput.value, seed, onBack), () => renderProfileEdit(perfil, nameInput.value, state.draftAvatar, onBack)));
     editor.append(preview, el("label", { class: "cfg-field-label" }, "Nome do perfil"));
     const nameInput = el("input", { class: "input cfg-field", type: "text", value: draftNome, maxlength: "40", autocomplete: "nickname" });
     editor.append(nameInput, el("label", { class: "cfg-field-label" }, "Escolher avatar"));
@@ -333,7 +334,7 @@ export default async function paginaConfiguracoes(raiz) {
       });
       strip.append(mini);
     });
-    const choose = button("Escolher outro avatar", "cfg-wide-button", () => renderAvatarPicker(state.draftAvatar, (seed) => renderProfileEdit(perfil, nameInput.value, seed), () => renderProfileEdit(perfil, nameInput.value, state.draftAvatar)));
+    const choose = button("Escolher outro avatar", "cfg-wide-button", () => renderAvatarPicker(state.draftAvatar, (seed) => renderProfileEdit(perfil, nameInput.value, seed, onBack), () => renderProfileEdit(perfil, nameInput.value, state.draftAvatar, onBack)));
     editor.append(strip, choose, button("Salvar alterações", "cfg-save-button", () => salvarPerfil(perfil, nameInput.value, state.draftAvatar)));
     if (perfil && state.perfis.length > 1) editor.append(button("Excluir perfil", "cfg-delete-link", () => confirmarExclusao(perfil)));
     page.append(editor);
@@ -352,7 +353,7 @@ export default async function paginaConfiguracoes(raiz) {
     }
     atualizarPerfis();
     toast("Perfil atualizado.");
-    renderProfileEdit(state.perfis.find((item) => item.id === (perfil?.id || "")) || perfil, valor, avatarSeed);
+    renderProfileEdit(state.perfis.find((item) => item.id === (perfil?.id || "")) || perfil, valor, avatarSeed, state.editBack || renderProfiles);
   }
 
   function renderAddProfile(draft = {}) {
