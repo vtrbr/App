@@ -55,7 +55,7 @@ class PlayerActivity : Activity() {
         const val EXTRA_SERIE_SLUG = "serie_slug"
         const val PREFS = "tedflix_preferences"
         const val BUFFER_KEY = "buffer"
-        private const val API_BASE = "https://ted.cryptitys.site/api"
+        private const val API_BASE = "https://tedtv.onrender.com/api"
         private const val STREAM_ORIGIN = "https://novelasflix.video"
         private const val STREAM_REFERER = "https://novelasflix.video/"
         private const val STREAM_USER_AGENT =
@@ -465,9 +465,7 @@ class PlayerActivity : Activity() {
             val categoria = currentCategoria
             val slug = currentSlug
             val titulo = currentTitle
-            AuthSession.restoreActiveProfileIfNeeded()
-            val sessionToken = AuthSession.token()?.takeIf { it.isNotBlank() }
-            if (sessionToken == null) {
+            if (!AuthSession.hasToken()) {
                 showDiagnosticScreen(
                     "Sessão ausente",
                     IllegalStateException("Faça login para reproduzir este conteúdo."),
@@ -487,9 +485,7 @@ class PlayerActivity : Activity() {
             diagnosticUrl = streamUrl
             markStep("streamUrl montada")
             val buffer = getSharedPreferences(PREFS, MODE_PRIVATE).getString(BUFFER_KEY, "equilibrado")
-            // Capture o Bearer uma vez: o preflight e o Media3 devem usar a
-            // mesma sessão, sem depender de uma nova leitura concorrente.
-            val requestProperties = streamRequestProperties(sessionToken)
+            val requestProperties = streamRequestProperties()
             validationThread?.interrupt()
             validationThread = Thread {
                 var connection: HttpURLConnection? = null
@@ -509,14 +505,7 @@ class PlayerActivity : Activity() {
                     val content = preview.trimStart().removePrefix("\uFEFF").trimStart()
                     val details = "HTTP status: $status\nContent-Type: $contentType\nPrévia:\n${preview.take(1200)}"
                     if (status !in 200..299) {
-                        val upstreamUnauthorized = status == 500 &&
-                            preview.contains("status code 401", ignoreCase = true)
-                        val message = if (upstreamUnauthorized) {
-                            "O servidor de filmes respondeu HTTP 500 porque a fonte do vídeo recusou a autenticação (401 interno)."
-                        } else {
-                            "A API/CDN respondeu HTTP $status"
-                        }
-                        throw StreamValidationException(message, details)
+                        throw StreamValidationException("A API/CDN respondeu HTTP $status", details)
                     }
                     if (!content.startsWith("#EXTM3U")) {
                         throw StreamValidationException("A resposta não é uma playlist HLS (#EXTM3U ausente)", details)
@@ -630,14 +619,14 @@ class PlayerActivity : Activity() {
         }
     }
 
-    private fun streamRequestProperties(sessionToken: String? = AuthSession.token()): Map<String, String> = buildMap {
+    private fun streamRequestProperties(): Map<String, String> = buildMap {
         put("Origin", STREAM_ORIGIN)
         put("Referer", STREAM_REFERER)
         put("Accept", "*/*")
         put("Accept-Language", "pt-BR,pt;q=0.9")
         put("Cache-Control", "no-cache")
         put("Pragma", "no-cache")
-        sessionToken?.takeIf { it.isNotBlank() }?.let { token ->
+        AuthSession.token()?.takeIf { it.isNotBlank() }?.let { token ->
             put("Authorization", "Bearer $token")
         }
     }

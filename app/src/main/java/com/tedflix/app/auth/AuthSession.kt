@@ -26,9 +26,9 @@ import javax.crypto.spec.GCMParameterSpec
  */
 object AuthSession {
     private const val TAG = "TedflixAuthSession"
-    private const val AUTH_BASE = "https://auth.cryptitys.site"
-    const val MOVIE_API_BASE = "https://ted.cryptitys.site/api"
-    const val MOVIE_API_HOST = "ted.cryptitys.site"
+    private const val AUTH_BASE = "https://authted.onrender.com"
+    const val MOVIE_API_BASE = "https://tedtv.onrender.com/api"
+    const val MOVIE_API_HOST = "tedtv.onrender.com"
     private const val PREFS = "tedflix_auth_session"
     private const val TOKEN_KEY = "encrypted_access_token"
     private const val KEY_ALIAS = "TedflixAuthBearerKey"
