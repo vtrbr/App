@@ -633,3 +633,145 @@ body.imersivo .topbar, body.imersivo .tabbar { display: none; }
   .cfg-profile-mini-avatar, .cfg-add-circle { width: 124px; height: 124px; }
   .cfg-avatar-grid { grid-template-columns: repeat(5, minmax(0, 1fr)); max-width: 560px; gap: 17px; }
 }
+
+
+/* ---------- correção definitiva de viewport das configurações ---------- */
+html, body, #app, .app, .page, .cfg, .cfg-shell {
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+}
+
+.cfg-shell {
+  display: block;
+  padding-inline: clamp(12px, 4vw, 24px);
+  overflow-x: clip;
+  overflow-y: visible;
+}
+
+.cfg-screen-head,
+.cfg-screen-head-left,
+.cfg-profile-editor,
+.cfg-form-card,
+.cfg-settings-section,
+.cfg-card,
+.cfg-row,
+.cfg-choice,
+.cfg-account-profile {
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+}
+
+.cfg-screen-head {
+  overflow: visible;
+}
+
+.cfg-screen-head-left {
+  overflow: hidden;
+}
+
+.cfg-screen-head h1 {
+  min-width: 0;
+  max-width: 100%;
+}
+
+.cfg-head-action {
+  flex: 0 1 auto;
+  width: auto;
+  max-width: min(31vw, 104px);
+  min-width: 0;
+  padding-inline: 6px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.cfg-back {
+  position: relative;
+  flex: 0 0 40px;
+  width: 40px;
+  height: 40px;
+  color: #fff !important;
+  font-family: Arial, sans-serif;
+  font-size: 34px;
+  font-weight: 300;
+  line-height: 36px;
+  text-align: center;
+  text-indent: -1px;
+  overflow: hidden;
+}
+
+.cfg-back::before {
+  content: none;
+}
+
+.cfg-back svg,
+.cfg-back .cfg-icon {
+  display: none !important;
+}
+
+.cfg-profile-editor {
+  overflow: visible;
+}
+
+.cfg-field,
+.cfg-save-button,
+.cfg-wide-button,
+.cfg-delete-link {
+  box-sizing: border-box;
+  max-width: 100%;
+}
+
+.cfg-avatar-strip {
+  flex-wrap: nowrap;
+  overflow-x: auto;
+  overflow-y: hidden;
+  overscroll-behavior-x: contain;
+  touch-action: pan-x;
+}
+
+.cfg-strip-option {
+  flex: 0 0 58px;
+  width: 58px;
+  min-width: 58px;
+}
+
+@media (max-width: 430px) {
+  .cfg-shell { padding-inline: 12px; }
+  .cfg-screen-head { gap: 5px; }
+  .cfg-screen-head-left { gap: 5px; }
+  .cfg-screen-head h1 { font-size: clamp(18px, 6.5vw, 23px); }
+  .cfg-head-action { max-width: 25vw; padding-inline: 2px; font-size: 12px; }
+  .cfg-back { flex-basis: 38px; width: 38px; height: 38px; }
+  .cfg-editor-preview { width: min(52vw, 176px); height: min(52vw, 176px); }
+  .cfg-form-card { padding-inline: 14px; }
+}
+
+@media (min-width: 700px) {
+  .cfg-shell { padding-inline: 28px; }
+}
+
+
+/* Rolagem vertical dedicada para Configurações; evita conteúdo escondido pela tabbar. */
+.cfg-shell {
+  min-height: calc(100dvh - 118px);
+  max-height: calc(100dvh - 118px);
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior-y: contain;
+  -webkit-overflow-scrolling: touch;
+  padding-bottom: 116px;
+}
+
+.cfg-profile-editor,
+.cfg-avatar-grid,
+.cfg-form-card {
+  overflow: visible;
+}
+
+.cfg-field {
+  flex: 0 1 auto;
+  min-width: 0 !important;
+}

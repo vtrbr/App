@@ -80,10 +80,10 @@ function cabecalho(titulo, onBack, acao, textoAcao = "") {
   const header = el("div", { class: "cfg-screen-head" });
   const left = el("div", { class: "cfg-screen-head-left" });
   if (onBack) {
-    const back = button("", "cfg-back", onBack);
+    const back = button("←", "cfg-back", onBack);
+    back.setAttribute("style", "display:grid;place-items:center;width:40px;min-width:40px;height:40px;padding:0;color:#ffffff!important;background:#171820;border:1px solid rgba(255,255,255,.10);border-radius:999px;font-family:Arial,sans-serif;font-size:27px;font-weight:400;line-height:1;text-indent:0;overflow:hidden;");
     back.setAttribute("aria-label", "Voltar para Configurações");
     back.setAttribute("title", "Voltar para Configurações");
-    back.append(icon("back"));
     left.append(back);
   }
   left.append(el("h1", {}, titulo));

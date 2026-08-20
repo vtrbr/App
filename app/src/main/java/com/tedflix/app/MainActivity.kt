@@ -455,6 +455,8 @@ class MainActivity : Activity() {
             settings.javaScriptEnabled = true
             settings.domStorageEnabled = true
             settings.databaseEnabled = true
+            @Suppress("DEPRECATION")
+            settings.cacheMode = android.webkit.WebSettings.LOAD_NO_CACHE
             settings.mediaPlaybackRequiresUserGesture = false
             settings.allowFileAccess = true
             settings.allowContentAccess = true
