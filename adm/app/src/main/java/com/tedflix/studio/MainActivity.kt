@@ -8,6 +8,7 @@ import android.webkit.WebChromeClient
 import android.webkit.WebResourceRequest
 import android.webkit.WebView
 import android.webkit.WebViewClient
+import android.view.View
 import com.tedflix.studio.auth.StudioSession
 import org.json.JSONObject
 import java.io.BufferedInputStream
@@ -49,6 +50,8 @@ class MainActivity : Activity() {
         }
         webView.isVerticalScrollBarEnabled = false
         webView.isHorizontalScrollBarEnabled = false
+        webView.isScrollbarFadingEnabled = true
+        webView.overScrollMode = View.OVER_SCROLL_NEVER
         webView.webChromeClient = WebChromeClient()
         webView.webViewClient = object : WebViewClient() {
             override fun shouldOverrideUrlLoading(view: WebView, request: WebResourceRequest): Boolean {
