@@ -998,6 +998,38 @@ class MainActivity : Activity() {
         }
 
         @JavascriptInterface
+        fun getAccountProfile(): String {
+            return try {
+                val result = AuthSession.profile()
+                if (!result.ok) {
+                    org.json.JSONObject()
+                        .put("success", false)
+                        .put("error", result.message.ifBlank { "Não foi possível carregar os dados da conta." })
+                        .toString()
+                } else {
+                    val user = result.value
+                    org.json.JSONObject().apply {
+                        put("success", true)
+                        put("user", org.json.JSONObject().apply {
+                            put("id", user?.id.orEmpty())
+                            put("email", user?.email.orEmpty())
+                            put("username", user?.username.orEmpty())
+                            put("accountExpiresAt", user?.expiresAt.orEmpty())
+                            put("accountStatus", user?.accountStatus.orEmpty())
+                            user?.daysRemaining?.let { put("daysRemaining", it) }
+                            put("createdAt", user?.createdAt.orEmpty())
+                            put("lastUsedAt", user?.lastUsedAt.orEmpty())
+                            user?.warning?.let { put("warning", it) }
+                        })
+                    }.toString()
+                }
+            } catch (error: Throwable) {
+                Log.w("TedflixMain", "Falha ao carregar os dados da conta", error)
+                "{\"success\":false,\"error\":\"Não foi possível carregar os dados da conta.\"}"
+            }
+        }
+
+        @JavascriptInterface
         fun updateProfileName(username: String?): String {
             return try {
                 val result = AuthSession.updateUsername(username.orEmpty())

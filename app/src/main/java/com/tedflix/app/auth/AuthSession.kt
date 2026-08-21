@@ -43,6 +43,9 @@ object AuthSession {
         val expiresAt: String = "",
         val accountStatus: String = "",
         val daysRemaining: Int? = null,
+        val createdAt: String = "",
+        val lastUsedAt: String = "",
+        val warning: JSONObject? = null,
     )
 
     data class Profile(
@@ -182,6 +185,9 @@ object AuthSession {
             .putString("expires_at", user?.expiresAt.orEmpty())
             .putString("account_status", user?.accountStatus.orEmpty())
             .putInt("days_remaining", user?.daysRemaining ?: -1)
+            .putString("created_at", user?.createdAt.orEmpty())
+            .putString("last_used_at", user?.lastUsedAt.orEmpty())
+            .putString("warning_json", user?.warning?.toString().orEmpty())
             .apply()
     }
 
@@ -195,6 +201,9 @@ object AuthSession {
             expiresAt = prefs.getString("expires_at", "").orEmpty(),
             accountStatus = prefs.getString("account_status", "").orEmpty(),
             daysRemaining = prefs.getInt("days_remaining", -1).takeIf { it >= 0 },
+            createdAt = prefs.getString("created_at", "").orEmpty(),
+            lastUsedAt = prefs.getString("last_used_at", "").orEmpty(),
+            warning = prefs.getString("warning_json", "").orEmpty().takeIf { it.isNotBlank() }?.let { parseObject(it) },
         )
     }
 
@@ -521,6 +530,9 @@ object AuthSession {
                             expiresAt = item.optString("expiresAt"),
                             accountStatus = item.optString("accountStatus"),
                             daysRemaining = item.optInt("daysRemaining", -1).takeIf { it >= 0 },
+                            createdAt = item.optString("createdAt"),
+                            lastUsedAt = item.optString("lastUsedAt"),
+                            warning = item.optJSONObject("warning"),
                         ),
                         encryptedToken = encrypted,
                     ))
@@ -544,6 +556,9 @@ object AuthSession {
                 put("expiresAt", profile.user.expiresAt)
                 put("accountStatus", profile.user.accountStatus)
                 put("daysRemaining", profile.user.daysRemaining ?: -1)
+                put("createdAt", profile.user.createdAt)
+                put("lastUsedAt", profile.user.lastUsedAt)
+                profile.user.warning?.let { put("warning", it) }
                 put("encryptedToken", profile.encryptedToken)
             }) }
         }
@@ -707,6 +722,9 @@ object AuthSession {
             expiresAt = json.optString("accountExpiresAt", json.optString("expiresAt")),
             accountStatus = json.optString("accountStatus", json.optString("status")),
             daysRemaining = if (json.has("daysRemaining")) json.optInt("daysRemaining") else null,
+            createdAt = json.optString("createdAt"),
+            lastUsedAt = json.optString("lastUsedAt"),
+            warning = json.optJSONObject("warning"),
         )
     }
 

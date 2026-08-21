@@ -64,14 +64,40 @@ function lerPerfis() {
   return { perfis, ativo };
 }
 
-function tituloStatus() {
-  const resposta = respostaAndroid("getAccountStatus");
-  if (!resposta.success) return "Status indisponível no momento.";
-  const status = resposta.status || {};
-  const situacao = status.status || status.accountStatus || "ativa";
-  const validade = status.validade || status.expiresAt || status.expiraEm || "não informada";
-  const dias = status.diasRestantes ?? status.daysRemaining;
+function lerConta() {
+  const resposta = respostaAndroid("getAccountProfile");
+  if (!resposta.success) return { success: false, error: resposta.error || "Status indisponível no momento." };
+  return { success: true, user: resposta.user || {} };
+}
+
+function tituloStatus(conta) {
+  if (!conta?.success) return conta?.error || "Status indisponível no momento.";
+  const user = conta.user || {};
+  const situacao = user.accountStatus || "active";
+  const validade = user.accountExpiresAt || "não informada";
+  const dias = user.daysRemaining;
   return `Status: ${situacao} · Validade: ${validade}${dias === undefined ? "" : ` · ${dias} dias restantes`}`;
+}
+
+function formatarData(valor, incluirHora = false) {
+  if (!valor) return "Não informado";
+  try {
+    const data = new Date(valor);
+    if (Number.isNaN(data.getTime())) return valor;
+    return new Intl.DateTimeFormat("pt-BR", incluirHora
+      ? { dateStyle: "medium", timeStyle: "short" }
+      : { dateStyle: "long" }).format(data);
+  } catch (_) {
+    return valor;
+  }
+}
+
+function statusContaLabel(status) {
+  const valor = String(status || "").toLowerCase();
+  if (valor === "active" || valor === "ativa") return "Conta ativa";
+  if (valor === "expired" || valor === "expirada") return "Conta expirada";
+  if (valor === "blocked" || valor === "bloqueada") return "Conta bloqueada";
+  return status || "Status não informado";
 }
 
 function cabecalho(titulo, onBack, acao, textoAcao = "") {
@@ -167,7 +193,8 @@ export default async function paginaConfiguracoes(raiz) {
     page.innerHTML = "";
     const prefs = lerPrefs();
     const perfil = perfilAtual(state.perfis, state.ativo);
-    const contaStatus = tituloStatus();
+    const conta = lerConta();
+    const contaStatus = tituloStatus(conta);
     const header = cabecalho("Configurações", null, null);
     page.append(header, el("p", { class: "cfg-lead" }, "Gerencie sua conta, perfil e preferências."));
 
@@ -180,9 +207,9 @@ export default async function paginaConfiguracoes(raiz) {
     profileButton.append(avatarWrap, el("span", { class: "cfg-account-copy" }, [
       el("strong", {}, perfil.name || "Meu perfil"),
       el("small", { class: "cfg-pill" }, state.perfis.length > 1 ? "Perfil selecionado" : "Perfil principal"),
-      el("small", {}, "Toque para editar nome e avatar"),
+      el("small", {}, "Toque para ver os dados do seu perfil"),
     ]), icon("chevron", "cfg-chevron"));
-    profileButton.addEventListener("click", () => renderProfileEdit(perfil));
+    profileButton.addEventListener("click", () => renderAccount(perfil));
     profileHero.append(profileButton);
     profileHero.append(el("div", { class: "cfg-account-status" }, [
       el("div", { class: "cfg-account-status-title" }, [el("span", { class: "cfg-status-dot" }), "Minha conta"]),
@@ -225,6 +252,72 @@ export default async function paginaConfiguracoes(raiz) {
     const cache = lerCache();
     if (cache && !cache.expirado) pintarRede(cache, networkValue, networkTag, networkDescription);
     medir().then((dados) => pintarRede(dados, networkValue, networkTag, networkDescription)).catch(() => pintarRede(null, networkValue, networkTag, networkDescription));
+  }
+
+  function renderAccount(perfil) {
+    page.innerHTML = "";
+    page.append(cabecalho("Minha conta", renderHome));
+    page.append(el("p", { class: "cfg-lead" }, "Veja os dados da sua conta e o status da sua assinatura."));
+
+    const resposta = lerConta();
+    if (!resposta.success) {
+      page.append(el("section", { class: "cfg-card cfg-account-error" }, [
+        icon("user", "cfg-colored red"),
+        el("div", {}, [
+          el("strong", {}, "Não foi possível carregar os dados"),
+          el("p", {}, resposta.error || "Tente novamente em alguns instantes."),
+        ]),
+        button("Tentar novamente", "cfg-wide-button", () => renderAccount(perfil)),
+      ]));
+      return;
+    }
+
+    const user = resposta.user || {};
+    const status = String(user.accountStatus || "").toLowerCase();
+    const ativo = status === "active" || status === "ativa";
+    const dias = Number.isFinite(Number(user.daysRemaining)) ? Number(user.daysRemaining) : null;
+    const warning = user.warning && typeof user.warning === "object" ? user.warning : null;
+    const nome = user.username || perfil?.name || "Minha conta";
+    const avatar = el("div", { class: "cfg-account-detail-avatar" }, [imgAvatar(perfil, "cfg-account-detail-avatar-img", 320)]);
+    const identity = el("div", { class: "cfg-account-detail-identity" }, [
+      el("h2", {}, nome),
+      el("p", {}, user.email || perfil?.email || "E-mail não informado"),
+      el("span", { class: `cfg-account-status-badge${ativo ? " active" : " inactive"}` }, [
+        el("span", { class: "cfg-status-dot" }), statusContaLabel(user.accountStatus),
+      ]),
+      user.id ? el("small", {}, `ID da conta: ${user.id}`) : null,
+    ].filter(Boolean));
+    page.append(el("section", { class: "cfg-account-detail-hero" }, [avatar, identity]));
+
+    const subscription = el("section", { class: "cfg-card cfg-subscription-card" });
+    const daysLabel = dias === null ? "—" : String(Math.max(0, dias));
+    subscription.append(el("div", { class: "cfg-subscription-heading" }, [
+      el("div", {}, [el("span", { class: "cfg-eyebrow" }, "Sua assinatura"), el("strong", {}, daysLabel), el("span", { class: "cfg-days-label" }, dias === 1 ? "dia restante" : "dias restantes")]),
+      el("div", { class: `cfg-days-ring${ativo ? " active" : ""}` }, [el("strong", {}, daysLabel), el("small", {}, "dias")]),
+    ]));
+    if (dias !== null) {
+      const progress = el("div", { class: "cfg-days-progress" });
+      const percent = Math.max(4, Math.min(100, Math.round((dias / Math.max(dias, 30)) * 100)));
+      progress.append(el("span", { style: `width:${percent}%` }));
+      subscription.append(progress);
+    }
+    subscription.append(el("p", { class: "cfg-subscription-expiry" }, `Expira em ${formatarData(user.accountExpiresAt)}`));
+    page.append(subscription);
+
+    if (warning) {
+      page.append(el("section", { class: "cfg-account-warning" }, [
+        icon("alert", "cfg-colored red"),
+        el("div", {}, [el("strong", {}, "Sua assinatura está perto de expirar"), el("p", {}, warning.message || `Sua assinatura expira em ${warning.daysLeft ?? dias ?? "poucos"} dias.`)]),
+      ]));
+    }
+
+    const info = el("section", { class: "cfg-card cfg-account-info" });
+    info.append(el("div", { class: "cfg-group-label" }, "Informações da conta"));
+    info.append(linhaOpcao("shield", "Status da conta", statusContaLabel(user.accountStatus), null, el("strong", { class: `cfg-info-value${ativo ? " active" : ""}` }, ativo ? "Ativa" : (user.accountStatus || "Não informado"))));
+    info.append(linhaOpcao("calendar", "Membro desde", formatarData(user.createdAt), null));
+    info.append(linhaOpcao("clock", "Último acesso", formatarData(user.lastUsedAt, true), null));
+    info.append(linhaOpcao("calendar", "Expiração da conta", formatarData(user.accountExpiresAt), null));
+    page.append(info);
   }
 
   function pintarRede(dados, valor, tag, detalhe) {
