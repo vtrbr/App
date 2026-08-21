@@ -11,13 +11,21 @@ function avatarUrl(seed, size = 256) {
 
 function respostaAndroid(nome, ...args) {
   try {
-    const fn = window.AndroidPlayer?.[nome];
+    const bridge = window.AndroidPlayer;
+    const fn = bridge && bridge[nome];
     if (typeof fn !== "function") return { success: false, error: "Função indisponível." };
-    const raw = fn(...args);
+    // A API JavaScript do WebView precisa ser chamada como método do objeto
+    // injetado. Se a função for destacada para uma variável e chamada solta,
+    // o Android pode rejeitá-la como método de objeto não injetado.
+    const raw = bridge[nome](...args);
     if (typeof raw === "object") return raw;
     return JSON.parse(raw || "{}");
   } catch (error) {
-    return { success: false, error: error?.message || "Não foi possível concluir a operação." };
+    const mensagem = String(error?.message || "");
+    if (mensagem.toLowerCase().includes("bridge") || mensagem.toLowerCase().includes("injected")) {
+      return { success: false, error: "Não foi possível acessar os dados da conta agora." };
+    }
+    return { success: false, error: mensagem || "Não foi possível concluir a operação." };
   }
 }
 
@@ -66,8 +74,25 @@ function lerPerfis() {
 
 function lerConta() {
   const resposta = respostaAndroid("getAccountProfile");
-  if (!resposta.success) return { success: false, error: resposta.error || "Status indisponível no momento." };
-  return { success: true, user: resposta.user || {} };
+  if (resposta.success) return { success: true, user: resposta.user || {} };
+
+  // Compatibilidade: se uma versão antiga do APK ainda não expuser o método
+  // completo, usa o endpoint de status para não quebrar o cartão da conta.
+  const statusResposta = respostaAndroid("getAccountStatus");
+  if (statusResposta.success) {
+    const status = statusResposta.status || {};
+    return {
+      success: true,
+      user: {
+        accountStatus: status.accountStatus || status.status || "active",
+        accountExpiresAt: status.accountExpiresAt || status.expiresAt || "",
+        daysRemaining: status.daysRemaining ?? status.diasRestantes,
+        warning: status.warning || null,
+      },
+    };
+  }
+
+  return { success: false, error: "Não foi possível carregar os dados da conta agora." };
 }
 
 function tituloStatus(conta) {
