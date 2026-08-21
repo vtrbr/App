@@ -335,7 +335,9 @@ class PlayerActivity : Activity() {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
             setPadding(dp(22), dp(14), dp(22), dp(14))
-            background = gradient(Color.argb(185, 0, 0, 0), 0f, 0f, 0f, 1f)
+            // Overlay transparente: título e ações ficam diretamente sobre o vídeo,
+            // sem a faixa escura atrás do cabeçalho.
+            setBackgroundColor(Color.TRANSPARENT)
             isClickable = true
             setOnClickListener { if (playerReady) setControlsVisible(false) }
         }
@@ -405,7 +407,8 @@ class PlayerActivity : Activity() {
         val bottom = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setPadding(dp(22), dp(8), dp(22), dp(20))
-            background = gradient(Color.argb(210, 0, 0, 0), 1f, 0f, 0f, 0f)
+            // Controles inferiores sem painel/badge escuro, no estilo Netflix.
+            setBackgroundColor(Color.TRANSPARENT)
             isClickable = true
             setOnClickListener { if (playerReady) toggleControls() }
         }
@@ -451,7 +454,8 @@ class PlayerActivity : Activity() {
             setTextColor(Color.WHITE)
             setAllCaps(false)
             setPadding(dp(10), 0, dp(10), 0)
-            background = gradient(Color.argb(120, 35, 35, 35), 1f, 1f, 1f, 1f)
+            // Ação leve sobre o vídeo, sem cápsula escura atrás do texto.
+            setBackgroundColor(Color.TRANSPARENT)
             setOnClickListener { action() }
         }
         row.addView(button, LinearLayout.LayoutParams(0, dp(46), 1f).apply {
@@ -1063,9 +1067,7 @@ class PlayerActivity : Activity() {
         background = android.graphics.drawable.ColorDrawable(Color.TRANSPARENT)
     }
 
-    private fun roundButton(textValue: String, size: Int) = controlButton(textValue, size).apply {
-        background = gradient(Color.argb(140, 45, 45, 45), 1f, 1f, 1f, 1f)
-    }
+    private fun roundButton(textValue: String, size: Int) = controlButton(textValue, size)
 
     private fun timeText(textValue: String) = TextView(this).apply {
         text = textValue
