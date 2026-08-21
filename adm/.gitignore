@@ -1,0 +1,14 @@
+# Gradle local state
+.gradle/
+**/.gradle/
+
+# Android build outputs
+**/build/
+
+# Local SDK path
+local.properties
+
+# IDE files
+.idea/
+*.iml
+.DS_Store
