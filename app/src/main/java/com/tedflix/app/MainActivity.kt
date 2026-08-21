@@ -458,6 +458,19 @@ class MainActivity : Activity() {
             settings.javaScriptEnabled = true
             settings.domStorageEnabled = true
             settings.databaseEnabled = true
+            // A interface é de aplicativo: não permitir pinch-to-zoom nem
+            // os controles de escala do WebView.
+            @Suppress("DEPRECATION")
+            settings.setSupportZoom(false)
+            @Suppress("DEPRECATION")
+            settings.builtInZoomControls = false
+            @Suppress("DEPRECATION")
+            settings.displayZoomControls = false
+            @Suppress("DEPRECATION")
+            settings.useWideViewPort = false
+            @Suppress("DEPRECATION")
+            settings.loadWithOverviewMode = false
+            settings.textZoom = 100
             @Suppress("DEPRECATION")
             settings.cacheMode = android.webkit.WebSettings.LOAD_NO_CACHE
             settings.mediaPlaybackRequiresUserGesture = false
