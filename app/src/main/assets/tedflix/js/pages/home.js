@@ -54,6 +54,21 @@ export default async function paginaInicio(raiz) {
 async function carregarContinuarAssistindo() {
   try {
     if (!window.AndroidPlayer?.getContinueWatching) return [];
+
+    const lerSnapshot = () => {
+      try {
+        const valor = JSON.parse(window.AndroidPlayer.getContinueWatching() || "[]");
+        return Array.isArray(valor) ? valor : [];
+      } catch (_) {
+        return [];
+      }
+    };
+
+    // O cache local é a resposta imediata. A API é acionada em paralelo para
+    // atualizar/mesclar o histórico remoto sem fazer a Home parecer vazia
+    // enquanto o servidor responde.
+    const localSnapshot = lerSnapshot();
+    let itens = localSnapshot;
     if (window.AndroidPlayer.refreshContinueWatching) {
       await new Promise((resolve) => {
         let finalizado = false;
@@ -65,11 +80,15 @@ async function carregarContinuarAssistindo() {
         };
         window.__tedflixHistoryReady = concluir;
         try { window.AndroidPlayer.refreshContinueWatching(); } catch (_) { concluir(); }
-        setTimeout(concluir, 5000);
+        // Se há cache, ele já é suficiente para exibir os cards. Se não há,
+        // aguarde o Render/API acordar por mais tempo antes de declarar vazio.
+        setTimeout(concluir, localSnapshot.length ? 650 : 12000);
       });
+      const remotoMesclado = lerSnapshot();
+      if (remotoMesclado.length) itens = remotoMesclado;
     }
-    const itens = JSON.parse(window.AndroidPlayer.getContinueWatching() || "[]");
-    if (!Array.isArray(itens)) return [];
+
+    if (!itens.length) return [];
     const cards = await Promise.all(itens
       .filter((item) => item && (item.categoria || item.slug || item.titulo || item.filmeId))
       .map(async (item) => {
@@ -98,8 +117,16 @@ async function carregarContinuarAssistindo() {
           } catch (_) {}
         }
 
-        if (categoria && slug) {
-          try { detalhe = { ...(await getTitulo(categoria, slug)), ...(detalhe || {}) }; } catch (_) {}
+        // A rota conhecida já é suficiente para renderizar o histórico local.
+        // O detalhe completo é opcional e não pode bloquear a fileira.
+        if (categoria && slug && !detalhe) {
+          try {
+            const detalhePromise = getTitulo(categoria, slug);
+            detalhe = await Promise.race([
+              detalhePromise,
+              new Promise((resolve) => setTimeout(() => resolve(null), 900)),
+            ]);
+          } catch (_) {}
         }
 
         const tipo = item.tipo || detalhe?.tipo || "Filme";
@@ -110,8 +137,18 @@ async function carregarContinuarAssistindo() {
         if (ehEpisodio && detalheCategoria && detalheSlug) {
           try { detalhePai = await getTitulo(detalheCategoria, detalheSlug); } catch (_) {}
         }
-        if (!detalheCategoria || !detalheSlug) return null;
+        // Mesmo sem metadados completos, não escondemos o registro salvo.
+        // O link de favorito permite que a rota faça uma nova busca pelo título.
         const tipoCard = ehEpisodio ? (detalhePai?.tipo || "Série") : tipo;
+        const tituloCard = ehEpisodio
+          ? (detalhePai?.titulo || item.serieTitulo || item.titulo || "Série")
+          : (item.titulo || detalhe?.titulo || "Tedflix");
+        const imagemCard = ehEpisodio
+          ? (item.serieThumb || detalhePai?.imagem || item.thumb || detalhe?.imagem || "")
+          : (item.thumb || item.imagem || detalhe?.imagem || "");
+        const rota = detalheCategoria && detalheSlug
+          ? `/titulo/${ehEpisodio ? "serie" : (tipo.toLowerCase() === "serie" ? "serie" : "filme")}/${detalheCategoria}/${detalheSlug}`
+          : `#/favorito?titulo=${encodeURIComponent(tituloCard)}`;
         return {
           ...detalhePai,
           ...detalhe,
@@ -119,14 +156,9 @@ async function carregarContinuarAssistindo() {
           categoria,
           slug,
           tipo: tipoCard,
-          // O percentual continua sendo do episódio salvo, mas o card é da série.
-          titulo: ehEpisodio
-            ? (detalhePai?.titulo || item.serieTitulo || item.titulo || "Série")
-            : (item.titulo || detalhe?.titulo || "Tedflix"),
-          imagem: ehEpisodio
-            ? (item.serieThumb || detalhePai?.imagem || item.thumb || detalhe?.imagem || "")
-            : (item.thumb || item.imagem || detalhe?.imagem || ""),
-          link_assistir: `/titulo/${ehEpisodio ? "serie" : (tipo.toLowerCase() === "serie" ? "serie" : "filme")}/${detalheCategoria}/${detalheSlug}`,
+          titulo: tituloCard,
+          imagem: imagemCard,
+          link_assistir: rota,
           progresso: Number(item.percent || 0),
         };
       })).filter(Boolean);

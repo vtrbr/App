@@ -61,6 +61,11 @@ export function ehSerie(item) {
 
 /** Rota de detalhes de um item da API. */
 export function rotaDetalhe(item) {
+  // Alguns itens reconstruídos do histórico usam uma rota hash de fallback.
+  // Respeite-a diretamente em vez de tentar interpretá-la como link de CDN.
+  if (typeof item.link_assistir === "string" && item.link_assistir.startsWith("#/")) {
+    return item.link_assistir;
+  }
   const p = parseLink(item.link_assistir);
   const episodioDeSerie = Boolean(item.serieSlug || item.serieCategoria);
   const tipo = ehSerie(item) || episodioDeSerie ? "serie" : "filme";

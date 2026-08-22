@@ -306,8 +306,11 @@ class PlayerActivity : Activity() {
             orientation = LinearLayout.VERTICAL
             gravity = Gravity.CENTER
             isClickable = true
-            elevation = dp(8).toFloat()
-            background = gradient(Color.argb(235, 13, 14, 20), 1f, 1f, 1f, 1f)
+            // O carregamento segue o mesmo visual limpo dos controles:
+            // sem cartão, fundo escuro ou sombra por trás do spinner.
+            elevation = 0f
+            setBackgroundColor(Color.TRANSPARENT)
+            setPadding(dp(12), dp(8), dp(12), dp(8))
         }
         loading = ProgressBar(this).apply {
             visibility = View.VISIBLE
@@ -316,11 +319,12 @@ class PlayerActivity : Activity() {
         loadingPanel.addView(loading, LinearLayout.LayoutParams(dp(42), dp(42)))
         loadingPanel.addView(TextView(this).apply {
             text = "Carregando vídeo..."
-            textSize = 13f
+            textSize = 16f
             setTextColor(Color.WHITE)
+            setTypeface(android.graphics.Typeface.DEFAULT, android.graphics.Typeface.BOLD)
             gravity = Gravity.CENTER
-        }, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(10) })
-        overlay.addView(loadingPanel, FrameLayout.LayoutParams(dp(220), dp(122), Gravity.CENTER))
+        }, LinearLayout.LayoutParams(-2, -2).apply { topMargin = dp(10) })
+        overlay.addView(loadingPanel, FrameLayout.LayoutParams(-2, -2, Gravity.CENTER))
         markStep("loading criado")
         setContentView(root)
         markStep("setContentView concluído")
