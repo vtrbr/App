@@ -19,10 +19,15 @@ export default async function paginaInicio(raiz) {
   page.append(topo);
   raiz.append(page);
 
-  // A fileira é inserida antes de Últimos filmes e carrega em paralelo;
-  // assim a home não fica aguardando o refresh remoto do histórico.
+  // O histórico precisa ser carregado antes de montar as fileiras. A versão
+  // lazy anterior podia executar a fileira enquanto o refresh remoto ainda
+  // estava em andamento e fixá-la em "Nada por aqui agora".
+  const continuar = await carregarContinuarAssistindo();
+  if (continuar.length) {
+    page.append(fileira({ titulo: "Continuar Assistindo", carregar: async () => continuar, limite: 20 }));
+  }
+
   page.append(
-    fileira({ titulo: "Continuar Assistindo", carregar: carregarContinuarAssistindo, limite: 20 }),
     fileira({ titulo: "Últimos filmes", carregar: getUltimosFilmes }),
     fileira({ titulo: "Lançamentos", verTudo: "#/filmes", carregar: getLancamentos }),
     fileira({ titulo: "Séries", verTudo: "#/series", carregar: async () => (await getSeries()).slice(0, 24) }),
@@ -80,9 +85,9 @@ async function carregarContinuarAssistindo() {
         };
         window.__tedflixHistoryReady = concluir;
         try { window.AndroidPlayer.refreshContinueWatching(); } catch (_) { concluir(); }
-        // Se há cache, ele já é suficiente para exibir os cards. Se não há,
-        // aguarde o Render/API acordar por mais tempo antes de declarar vazio.
-        setTimeout(concluir, localSnapshot.length ? 650 : 12000);
+        // Aguarde a mesma janela usada pela versão funcional para o backend
+        // responder; o snapshot local continua sendo preservado enquanto isso.
+        setTimeout(concluir, 5000);
       });
       const remotoMesclado = lerSnapshot();
       if (remotoMesclado.length) itens = remotoMesclado;
