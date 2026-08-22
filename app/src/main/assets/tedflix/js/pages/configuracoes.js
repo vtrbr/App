@@ -143,7 +143,7 @@ function cabecalho(titulo, onBack, acao, textoAcao = "") {
   return header;
 }
 
-function linhaOpcao(nomeIcone, titulo, descricao, onClick, complemento = null) {
+function linhaOpcao(nomeIcone, titulo, descricao, onClick, complemento = null, mostrarChevron = true) {
   const row = el("button", { class: "cfg-row", type: "button" });
   row.append(icon(nomeIcone, "cfg-row-icon"));
   row.append(el("span", { class: "cfg-row-copy" }, [
@@ -151,7 +151,7 @@ function linhaOpcao(nomeIcone, titulo, descricao, onClick, complemento = null) {
     el("small", {}, descricao),
   ]));
   if (complemento) row.append(complemento);
-  row.append(icon("chevron", "cfg-chevron"));
+  if (mostrarChevron) row.append(icon("chevron", "cfg-chevron"));
   if (onClick) row.addEventListener("click", onClick);
   return row;
 }
@@ -338,10 +338,10 @@ export default async function paginaConfiguracoes(raiz) {
 
     const info = el("section", { class: "cfg-card cfg-account-info" });
     info.append(el("div", { class: "cfg-group-label" }, "Informações da conta"));
-    info.append(linhaOpcao("shield", "Status da conta", statusContaLabel(user.accountStatus), null, el("strong", { class: `cfg-info-value${ativo ? " active" : ""}` }, ativo ? "Ativa" : (user.accountStatus || "Não informado"))));
-    info.append(linhaOpcao("calendar", "Membro desde", formatarData(user.createdAt), null));
-    info.append(linhaOpcao("clock", "Último acesso", formatarData(user.lastUsedAt, true), null));
-    info.append(linhaOpcao("calendar", "Expiração da conta", formatarData(user.accountExpiresAt), null));
+    info.append(linhaOpcao("shield", "Status da conta", statusContaLabel(user.accountStatus), null, el("strong", { class: `cfg-info-value${ativo ? " active" : ""}` }, ativo ? "Ativa" : (user.accountStatus || "Não informado")), false));
+    info.append(linhaOpcao("calendar", "Membro desde", formatarData(user.createdAt), null, null, false));
+    info.append(linhaOpcao("clock", "Último acesso", formatarData(user.lastUsedAt, true), null, null, false));
+    info.append(linhaOpcao("calendar", "Expiração da conta", formatarData(user.accountExpiresAt), null, null, false));
     page.append(info);
   }
 
@@ -362,7 +362,7 @@ export default async function paginaConfiguracoes(raiz) {
   function renderProfiles() {
     atualizarPerfis();
     page.innerHTML = "";
-    page.append(cabecalho("Perfis", renderHome, () => renderManageProfiles(), "Editar"));
+    page.append(cabecalho("Perfis", renderHome));
     page.append(el("p", { class: "cfg-lead" }, "Escolha quem está assistindo ou adicione um novo perfil."));
     const grid = el("div", { class: "cfg-profiles-grid" });
     state.perfis.forEach((perfil) => grid.append(perfilCard(perfil, state.ativo, () => selecionarPerfil(perfil))));

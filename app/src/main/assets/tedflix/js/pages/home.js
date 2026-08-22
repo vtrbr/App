@@ -4,6 +4,8 @@ import { fileira } from "../components/row.js";
 import {
   getCarousel,
   getUltimosFilmes,
+  buscar,
+  parseLink,
   getLancamentos,
   getSeries,
   getGenero,
@@ -17,12 +19,10 @@ export default async function paginaInicio(raiz) {
   page.append(topo);
   raiz.append(page);
 
-  const continuar = await carregarContinuarAssistindo();
-  if (continuar.length) {
-    page.append(fileira({ titulo: "Continuar Assistindo", carregar: async () => continuar, limite: 20 }));
-  }
-
+  // A fileira é inserida antes de Últimos filmes e carrega em paralelo;
+  // assim a home não fica aguardando o refresh remoto do histórico.
   page.append(
+    fileira({ titulo: "Continuar Assistindo", carregar: carregarContinuarAssistindo, limite: 20 }),
     fileira({ titulo: "Últimos filmes", carregar: getUltimosFilmes }),
     fileira({ titulo: "Lançamentos", verTudo: "#/filmes", carregar: getLancamentos }),
     fileira({ titulo: "Séries", verTudo: "#/series", carregar: async () => (await getSeries()).slice(0, 24) }),
@@ -71,22 +71,53 @@ async function carregarContinuarAssistindo() {
     const itens = JSON.parse(window.AndroidPlayer.getContinueWatching() || "[]");
     if (!Array.isArray(itens)) return [];
     const cards = await Promise.all(itens
-      .filter((item) => item && item.categoria && item.slug)
+      .filter((item) => item && (item.categoria || item.slug || item.titulo || item.filmeId))
       .map(async (item) => {
+        let categoria = String(item.categoria || "").trim();
+        let slug = String(item.slug || "").trim();
         let detalhe = null;
-        try { detalhe = await getTitulo(item.categoria, item.slug); } catch (_) {}
+
+        // Registros antigos do endpoint remoto podem trazer apenas filmeId,
+        // titulo e thumb. Resolve o link pelo catálogo sem descartar o item.
+        if ((!categoria || !slug) && (item.titulo || item.filmeId)) {
+          try {
+            const busca = await buscar(item.titulo || item.filmeId);
+            const resultados = Array.isArray(busca?.resultados) ? busca.resultados : [];
+            const id = String(item.filmeId || "").trim();
+            const titulo = String(item.titulo || "").trim().toLowerCase();
+            const encontrado = resultados.find((candidato) => {
+              const candidatoId = String(candidato.filmeId || candidato.id || candidato._id || "").trim();
+              return (id && candidatoId === id) || (titulo && String(candidato.titulo || "").trim().toLowerCase() === titulo);
+            }) || resultados[0];
+            if (encontrado) {
+              const partes = parseLink(encontrado.link_assistir);
+              categoria = categoria || encontrado.categoria || partes.categoria;
+              slug = slug || encontrado.slug || partes.slug;
+              detalhe = encontrado;
+            }
+          } catch (_) {}
+        }
+
+        if (categoria && slug) {
+          try { detalhe = { ...(await getTitulo(categoria, slug)), ...(detalhe || {}) }; } catch (_) {}
+        }
+
         const tipo = item.tipo || detalhe?.tipo || "Filme";
         const ehEpisodio = Boolean(item.serieSlug || item.serieCategoria || String(item.tipo || "").toLowerCase().includes("epis"));
-        const detalheCategoria = item.serieCategoria || item.categoria;
-        const detalheSlug = item.serieSlug || item.slug;
+        const detalheCategoria = String(item.serieCategoria || categoria).trim();
+        const detalheSlug = String(item.serieSlug || slug).trim();
         let detalhePai = detalhe;
-        if (ehEpisodio) {
+        if (ehEpisodio && detalheCategoria && detalheSlug) {
           try { detalhePai = await getTitulo(detalheCategoria, detalheSlug); } catch (_) {}
         }
+        if (!detalheCategoria || !detalheSlug) return null;
         const tipoCard = ehEpisodio ? (detalhePai?.tipo || "Série") : tipo;
         return {
           ...detalhePai,
+          ...detalhe,
           ...item,
+          categoria,
+          slug,
           tipo: tipoCard,
           // O percentual continua sendo do episódio salvo, mas o card é da série.
           titulo: ehEpisodio

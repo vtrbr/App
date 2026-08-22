@@ -730,7 +730,10 @@ class MainActivity : Activity() {
                             slug = item.slug.ifBlank { resolved.slug },
                             tipo = item.tipo.ifBlank { resolved.tipo },
                         )
-                    }.filter { it.categoria.isNotBlank() && it.slug.isNotBlank() }
+                    }
+                    // O contrato antigo do histórico pode trazer apenas filmeId,
+                    // titulo, tempo e thumb. Mantemos esses itens para a WebView
+                    // tentar resolvê-los pelo catálogo antes de descartá-los.
                     activity.remoteHistoryCache = enriched
                     Log.d("TedflixMain", "Histórico remoto carregado: ${enriched.size} item(ns)")
                 } catch (error: Throwable) {
@@ -786,12 +789,14 @@ class MainActivity : Activity() {
                 remote.forEach { remoteItem ->
                     val categoria = remoteItem.categoria.trim()
                     val slug = remoteItem.slug.trim()
-                    if (categoria.isBlank() || slug.isBlank()) return@forEach
                     val alreadyPresent = (0 until local.length()).any { index ->
                         val item = local.optJSONObject(index) ?: return@any false
-                        val sameEpisode = item.optString("categoria") == categoria && item.optString("slug") == slug
+                        val sameEpisode = categoria.isNotBlank() && slug.isNotBlank() &&
+                            item.optString("categoria") == categoria && item.optString("slug") == slug
                         val sameId = remoteItem.filmeId.isNotBlank() && item.optString("filmeId") == remoteItem.filmeId
-                        sameEpisode || sameId
+                        val sameTitle = remoteItem.filmeId.isBlank() && remoteItem.titulo.isNotBlank() &&
+                            item.optString("titulo").equals(remoteItem.titulo, ignoreCase = true)
+                        sameEpisode || sameId || sameTitle
                     }
                     if (alreadyPresent) return@forEach
                     local.put(org.json.JSONObject().apply {
