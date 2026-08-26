@@ -1,4 +1,4 @@
-import { API_BASE } from "./config.js";
+import { API_BASE, LIVE_API_BASE } from "./config.js";
 
 /* Cache em memória + deduplicação de requisições.
    Os endpoints "/stream" devolvem o catálogo inteiro (megabytes), então
@@ -9,28 +9,29 @@ const emVoo = new Map();
 const TTL_CURTO = 5 * 60 * 1000;
 const TTL_LONGO = 30 * 60 * 1000;
 
-async function getJSON(caminho, ttl = TTL_CURTO) {
+async function getJSON(caminho, ttl = TTL_CURTO, base = API_BASE) {
+  const chave = `${base}${caminho}`;
   const agora = Date.now();
-  const guardado = cache.get(caminho);
+  const guardado = cache.get(chave);
   if (guardado && agora - guardado.t < ttl) return guardado.v;
-  if (emVoo.has(caminho)) return emVoo.get(caminho);
+  if (emVoo.has(chave)) return emVoo.get(chave);
 
-  const p = fetch(`${API_BASE}${caminho}`)
+  const p = fetch(`${base}${caminho}`)
     .then((r) => {
       if (!r.ok) throw new Error(`Falha ao carregar (${r.status})`);
       return r.json();
     })
     .then((v) => {
-      cache.set(caminho, { t: Date.now(), v });
-      emVoo.delete(caminho);
+      cache.set(chave, { t: Date.now(), v });
+      emVoo.delete(chave);
       return v;
     })
     .catch((e) => {
-      emVoo.delete(caminho);
+      emVoo.delete(chave);
       throw e;
     });
 
-  emVoo.set(caminho, p);
+  emVoo.set(chave, p);
   return p;
 }
 
@@ -79,8 +80,16 @@ export function rotaDetalhe(item) {
 export const getCarousel = () =>
   getJSON("/home/carousel", TTL_LONGO).then((d) => (d.itens || []).map((i) => normalizar(i)));
 
-export const getUltimosFilmes = () =>
-  getJSON("/ultimos-filmes").then((d) => (d.filmes || []).map((i) => normalizar(i, "Filme")));
+export const getUltimosFilmes = async () => {
+  try {
+    const d = await getJSON("/ultimos-filmes");
+    const filmes = Array.isArray(d.filmes) ? d.filmes : [];
+    if (filmes.length) return filmes.map((i) => normalizar(i, "Filme"));
+  } catch (_) {
+    // O serviço pode falhar ao extrair esta rota; o catálogo continua disponível.
+  }
+  return (await getFilmes()).slice(0, 30);
+};
 
 export const getAgenda = () => getJSON("/home/agenda").then((d) => d.dias || []);
 
@@ -132,6 +141,83 @@ export const getEpisodios = (categoria, slug, numero) =>
   getJSON(`/serie/${categoria}/${slug}/temporada/${numero}/episodios`, TTL_LONGO).then(
     (d) => d.episodios || [],
   );
+
+/* ---------------- CANAIS AO VIVO ---------------- */
+
+function urlHttpValida(url) {
+  try {
+    const parsed = new URL(String(url || ""));
+    return parsed.protocol === "http:" || parsed.protocol === "https:";
+  } catch (_) {
+    return false;
+  }
+}
+
+export function normalizarCanal(item = {}) {
+  const embeds = (Array.isArray(item.embeds) ? item.embeds : [])
+    .map((embed) => ({
+      provider: String(embed?.provider || "Servidor"),
+      quality: String(embed?.quality || "Automático"),
+      embed_url: String(embed?.embed_url || ""),
+    }))
+    .filter((embed) => urlHttpValida(embed.embed_url));
+  return {
+    id: String(item.id || ""),
+    titulo: String(item.name || item.title || "Canal ao vivo"),
+    descricao: String(item.description || ""),
+    logo: String(item.logo_url || item.logo || ""),
+    categoria: String(item.category || "Outros"),
+    embeds,
+    epg: item.epg || {},
+    aoVivo: true,
+  };
+}
+
+export const getCanais = (categoria = "") => {
+  const caminho = categoria ? `/channels?category=${encodeURIComponent(categoria)}` : "/channels";
+  return getJSON(caminho, TTL_CURTO, LIVE_API_BASE).then((d) =>
+    (Array.isArray(d.data) ? d.data : []).map(normalizarCanal),
+  );
+};
+
+export const getCanalCategorias = () =>
+  getJSON("/channels/categories", TTL_LONGO, LIVE_API_BASE).then((d) =>
+    (Array.isArray(d.data) ? d.data : []).map((item) => ({
+      id: String(item.id || ""),
+      nome: String(item.name || "Outros"),
+    })),
+  );
+
+export const getCanal = (id) =>
+  getJSON(`/channels/${encodeURIComponent(id)}`, TTL_CURTO, LIVE_API_BASE).then((d) =>
+    normalizarCanal(d.data && !Array.isArray(d.data) ? d.data : d.channel || d),
+  );
+
+export const getEventosAoVivo = () =>
+  getJSON("/sports?status=live", TTL_CURTO, LIVE_API_BASE).then((d) =>
+    (Array.isArray(d.data) ? d.data : []).map((item) => ({
+      ...item,
+      id: String(item.id || ""),
+      titulo: String(item.title || "Evento ao vivo"),
+      descricao: String(item.description || ""),
+      logo: String(item.poster || ""),
+      categoria: String(item.category || "Esportes"),
+      embeds: (Array.isArray(item.embeds) ? item.embeds : [])
+        .map((embed) => ({
+          provider: String(embed?.provider || "Servidor"),
+          quality: String(embed?.quality || "Automático"),
+          embed_url: String(embed?.embed_url || ""),
+        }))
+        .filter((embed) => urlHttpValida(embed.embed_url)),
+      aoVivo: true,
+    })),
+  );
+
+export const buscarCanais = (q) =>
+  getJSON(`/search?q=${encodeURIComponent(q || "")}`, TTL_CURTO, LIVE_API_BASE).then((d) => ({
+    canais: (Array.isArray(d.data?.channels) ? d.data.channels : []).map(normalizarCanal),
+    eventos: Array.isArray(d.data?.events) ? d.data.events : [],
+  }));
 
 /* ---------------- PLAYER ---------------- */
 

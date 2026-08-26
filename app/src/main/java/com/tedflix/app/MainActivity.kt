@@ -472,7 +472,9 @@ class MainActivity : Activity() {
             settings.loadWithOverviewMode = false
             settings.textZoom = 100
             @Suppress("DEPRECATION")
-            settings.cacheMode = android.webkit.WebSettings.LOAD_NO_CACHE
+            // O HTML e os assets são empacotados no APK; o modo padrão evita
+            // recarregar tudo a cada retorno sem afetar as requisições /api.
+            settings.cacheMode = android.webkit.WebSettings.LOAD_DEFAULT
             settings.mediaPlaybackRequiresUserGesture = false
             settings.allowFileAccess = true
             settings.allowContentAccess = true
@@ -666,6 +668,40 @@ class MainActivity : Activity() {
                     Log.e("TedflixMain", "Falha ao abrir o PlayerActivity", error)
                     activity.playerWasOpened = false
                     Toast.makeText(activity, "Não foi possível abrir o player.", Toast.LENGTH_LONG).show()
+                }
+            }
+        }
+
+        @JavascriptInterface
+        fun openLivePlayer(
+            channelId: String?,
+            title: String?,
+            logo: String?,
+            serversJson: String?,
+            program: String?,
+            category: String?,
+        ) {
+            val id = channelId.orEmpty().trim()
+            val name = title.orEmpty().trim().ifBlank { "Canal ao vivo" }
+            val servers = serversJson.orEmpty().trim()
+            activity.runOnUiThread {
+                if (id.isBlank() || servers.isBlank()) {
+                    Toast.makeText(activity, "Canal sem servidor disponível.", Toast.LENGTH_LONG).show()
+                    return@runOnUiThread
+                }
+                try {
+                    val intent = Intent(activity, LivePlayerActivity::class.java).apply {
+                        putExtra(LivePlayerActivity.EXTRA_CHANNEL_ID, id)
+                        putExtra(LivePlayerActivity.EXTRA_TITLE, name)
+                        putExtra(LivePlayerActivity.EXTRA_LOGO, logo.orEmpty().trim())
+                        putExtra(LivePlayerActivity.EXTRA_SERVERS, servers)
+                        putExtra(LivePlayerActivity.EXTRA_PROGRAM, program.orEmpty().trim())
+                        putExtra(LivePlayerActivity.EXTRA_CATEGORY, category.orEmpty().trim())
+                    }
+                    activity.startActivity(intent)
+                } catch (error: Throwable) {
+                    Log.e("TedflixMain", "Falha ao abrir o player ao vivo", error)
+                    Toast.makeText(activity, "Não foi possível abrir o player ao vivo.", Toast.LENGTH_LONG).show()
                 }
             }
         }

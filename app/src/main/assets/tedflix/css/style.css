@@ -50,8 +50,14 @@ img { display: block; max-width: 100%; }
   backdrop-filter: blur(14px);
   border-bottom: 1px solid color-mix(in oklab, var(--border) 60%, transparent);
 }
-.brand { flex: 0 1 auto; min-width: 0; overflow: hidden; font-family: var(--font-display); font-size: 22px; font-weight: 700; letter-spacing: 0.16em; white-space: nowrap; }
-.brand b { color: var(--primary); }
+.brand {
+  display: flex; align-items: center; flex: 0 1 auto; width: min(154px, 42vw); height: 36px;
+  min-width: 0; overflow: hidden; white-space: nowrap;
+}
+.brand img {
+  display: block; flex: 0 0 auto; width: 100%; height: 100%;
+  object-fit: contain; object-position: left center;
+}
  .icon-btn {
   position: relative; display: grid; place-items: center; width: 38px; height: 38px;
   border-radius: 999px; background: var(--surface);
@@ -654,7 +660,7 @@ body.imersivo .topbar, body.imersivo .tabbar { display: none; }
 @media (max-width: 380px) {
   html, body, #app, .app, .page { max-width: 100%; overflow-x: hidden; }
   .topbar { gap: 6px; padding-inline: 10px; }
-  .brand { font-size: 20px; letter-spacing: .12em; }
+  .brand { width: min(132px, 38vw); height: 32px; }
   .topbar-acoes { gap: 6px; }
   .icon-btn { width: 36px; height: 36px; }
   .cfg-shell { padding-inline: 12px; }
@@ -840,4 +846,60 @@ html, body, #app, .app, .page, .cfg, .cfg-shell {
 .cfg-field {
   flex: 0 1 auto;
   min-width: 0 !important;
+}
+
+/* ---------- canais ao vivo ---------- */
+.live-page { padding-top: 4px; }
+.live-heading { display: flex; align-items: flex-end; justify-content: space-between; gap: 12px; padding-right: 16px; }
+.live-heading .page-title { padding-bottom: 0; }
+.eyebrow { display: block; padding: 18px 16px 0; color: var(--primary); font-size: 10px; font-weight: 800; letter-spacing: .16em; }
+.live-sub { padding: 8px 16px 0; line-height: 1.45; }
+.live-status { display: inline-flex; align-items: center; gap: 6px; margin-bottom: 8px; color: #a7e7bd; font-size: 11px; font-weight: 800; white-space: nowrap; }
+.live-status i { width: 7px; height: 7px; border-radius: 50%; background: #49d17d; box-shadow: 0 0 0 4px rgba(73,209,125,.12); }
+.live-search { width: calc(100% - 32px); margin: 18px 16px 0; }
+.live-chips { padding-top: 12px; }
+.live-chips .chip { border: 1px solid var(--border); }
+.live-content { min-height: 280px; }
+.live-section { margin-top: 22px; }
+.live-section + .live-section { margin-top: 28px; }
+.live-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px 12px; padding: 0 16px; }
+@media (min-width: 600px) { .live-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+@media (min-width: 900px) { .live-grid { grid-template-columns: repeat(5, minmax(0, 1fr)); } }
+.live-card { min-width: 0; overflow: hidden; border: 1px solid color-mix(in oklab, var(--border) 72%, transparent); border-radius: 14px; background: var(--surface); transition: transform .18s ease, border-color .18s ease; }
+.live-card:active { transform: scale(.985); }
+.live-card:hover { border-color: color-mix(in oklab, var(--primary) 65%, var(--border)); }
+.live-thumb { position: relative; aspect-ratio: 16 / 10; display: grid; place-items: center; overflow: hidden; background: linear-gradient(135deg, #18243e, #0e1425); }
+.live-thumb::after { content: ""; position: absolute; inset: 0; background: linear-gradient(180deg, transparent 45%, rgba(0,0,0,.46)); pointer-events: none; }
+.live-thumb img { width: 100%; height: 100%; object-fit: contain; padding: 13px; opacity: 0; transition: opacity .22s ease; }
+.live-thumb img.on { opacity: 1; }
+.live-badge { position: absolute; left: 8px; top: 8px; z-index: 2; display: inline-flex; align-items: center; gap: 4px; padding: 4px 7px; border-radius: 6px; background: #d12f50; color: #fff; font-size: 9px; font-weight: 900; letter-spacing: .03em; }
+.live-badge svg { width: 11px; height: 11px; fill: none; stroke: currentColor; stroke-width: 2; }
+.live-card-body { display: grid; gap: 4px; padding: 10px 10px 12px; }
+.live-card-body strong { overflow: hidden; font-size: 13px; text-overflow: ellipsis; white-space: nowrap; }
+.live-meta, .live-provider { overflow: hidden; color: var(--muted-foreground); font-size: 10.5px; line-height: 1.25; text-overflow: ellipsis; white-space: nowrap; }
+.live-provider { color: #ef7e86; font-weight: 700; }
+.live-feature { display: block; margin: 0 16px; overflow: hidden; border-radius: 18px; background: var(--surface); }
+.live-feature-art { position: relative; min-height: 210px; background: linear-gradient(120deg, #162750, #080a11); }
+.live-feature-art img { width: 100%; height: 100%; min-height: 210px; object-fit: contain; padding: 32px 20%; opacity: 1; }
+.live-feature-veil { position: absolute; inset: 0; background: linear-gradient(90deg, rgba(5,6,9,.92), rgba(5,6,9,.3) 55%, rgba(5,6,9,.62)); }
+.live-feature-copy { position: absolute; inset: auto 0 0; display: grid; gap: 5px; padding: 20px; }
+.live-feature-copy h2 { max-width: 75%; font-size: 25px; line-height: 1.05; text-transform: uppercase; }
+.live-feature-copy p { max-width: 78%; overflow: hidden; color: var(--muted-foreground); font-size: 12px; text-overflow: ellipsis; white-space: nowrap; }
+.live-badge-large { position: static; width: max-content; }
+.live-state { min-height: 230px; }
+.live-state.is-error { color: #ffb0b5; }
+.live-detail-art { position: relative; aspect-ratio: 16 / 8; overflow: hidden; background: linear-gradient(135deg, #162750, #080a11); }
+.live-detail-art img { width: 100%; height: 100%; object-fit: contain; padding: 12% 28%; }
+.live-detail-veil { position: absolute; inset: 0; background: linear-gradient(180deg, transparent 28%, var(--background) 100%); }
+.live-detail-body { position: relative; margin-top: -36px; padding: 0 16px 24px; }
+.live-detail-body h1 { margin-top: 9px; font-size: 28px; text-transform: uppercase; }
+.live-detail-body .desc { max-width: 720px; }
+.live-start { margin-top: 18px; }
+.live-start svg { width: 16px; height: 16px; fill: currentColor; }
+
+@media (max-width: 390px) {
+  .tabbar a { font-size: 9.5px; }
+  .tabbar a svg { width: 19px; height: 19px; }
+  .live-heading { align-items: flex-start; flex-direction: column; gap: 0; }
+  .live-status { margin: 0 16px 0; }
 }

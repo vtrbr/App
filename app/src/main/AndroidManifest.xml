@@ -8,9 +8,9 @@
         android:name=".TedflixApplication"
         android:allowBackup="true"
         android:hardwareAccelerated="true"
-        android:icon="@drawable/tedflix_icon"
+        android:icon="@mipmap/ic_tedflix_launcher"
         android:label="Tedflix"
-        android:roundIcon="@drawable/tedflix_icon"
+        android:roundIcon="@mipmap/ic_tedflix_launcher"
         android:supportsRtl="true"
         android:theme="@style/Theme.Tedflix"
         android:usesCleartextTraffic="true">
@@ -32,6 +32,12 @@
             android:theme="@style/Theme.Tedflix" />
         <activity
             android:name=".PlayerActivity"
+            android:configChanges="orientation|screenSize|keyboardHidden|smallestScreenSize|screenLayout"
+            android:exported="false"
+            android:screenOrientation="landscape"
+            android:theme="@style/Theme.Tedflix.Player" />
+        <activity
+            android:name=".LivePlayerActivity"
             android:configChanges="orientation|screenSize|keyboardHidden|smallestScreenSize|screenLayout"
             android:exported="false"
             android:screenOrientation="landscape"

@@ -58,6 +58,7 @@ export const ICONES = {
   film: '<rect x="3" y="3" width="18" height="18" rx="2"/><path d="M7 3v18M17 3v18M3 12h18"/>',
   grid: '<rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/>',
   calendar: '<rect x="3" y="5" width="18" height="16" rx="2"/><path d="M8 3v4M16 3v4M3 10h18"/>',
+  broadcast: '<path d="M8.5 8.5a5 5 0 0 1 0 7M5.5 5.5a9 9 0 0 1 0 13M15.5 8.5a5 5 0 0 0 0 7M18.5 5.5a9 9 0 0 0 0 13"/><circle cx="12" cy="12" r="1.4" fill="currentColor" stroke="none"/>',
   back: '<path d="M15 5l-7 7 7 7"/>',
   gear: '<circle cx="12" cy="12" r="3.2"/><path d="M19.4 13.5a7.7 7.7 0 0 0 0-3l1.8-1.4-2-3.4-2.1.9a7.7 7.7 0 0 0-2.6-1.5L14.2 2h-4l-.3 2.3a7.7 7.7 0 0 0-2.6 1.5l-2.1-.9-2 3.4 1.8 1.4a7.7 7.7 0 0 0 0 3L3.2 14.9l2 3.4 2.1-.9a7.7 7.7 0 0 0 2.6 1.5l.3 2.3h4l.3-2.3a7.7 7.7 0 0 0 2.6-1.5l2.1.9 2-3.4z"/>',
   user: '<circle cx="12" cy="8" r="3.5"/><path d="M4.5 21a7.5 7.5 0 0 1 15 0"/>',
