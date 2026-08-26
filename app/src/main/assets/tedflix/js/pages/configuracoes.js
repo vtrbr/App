@@ -4,6 +4,8 @@ import { medir, lerCache, nivel, ROTULO } from "../net.js";
 
 const AVATAR_SEEDS = Array.from({ length: 15 }, (_, index) => `tedflix-avatar-${String(index + 1).padStart(2, "0")}`);
 const DEFAULT_SEED = AVATAR_SEEDS[0];
+const APP_VERSION = "1.28.1";
+const APP_COMMIT_COUNT = 46;
 
 function avatarUrl(seed, size = 256) {
   return `https://api.dicebear.com/10.x/fun-emoji/png?seed=${encodeURIComponent(seed || DEFAULT_SEED)}&size=${size}`;
@@ -267,6 +269,16 @@ export default async function paginaConfiguracoes(raiz) {
     const playback = el("section", { class: "cfg-card cfg-card-group" });
     playback.append(linhaOpcao("play", "Reprodução", `Player ${prefs.player === "auto" ? "automático" : prefs.player} · buffer ${prefs.buffer}.`, () => renderPlayback()));
     page.append(playback);
+
+    const versionCard = el("section", { class: "cfg-card cfg-version-card" }, [
+      icon("info", "cfg-colored purple"),
+      el("div", { class: "cfg-version-copy" }, [
+        el("strong", {}, `Tedflix ${APP_VERSION}`),
+        el("small", {}, `${APP_COMMIT_COUNT} commits consolidados nesta versão.`),
+      ]),
+      el("span", { class: "cfg-version-badge" }, "Atual"),
+    ]);
+    page.append(versionCard);
 
     const system = el("section", { class: "cfg-card cfg-card-group" });
     system.append(linhaOpcao("bell", "Notificações", "Gerencie avisos e atualizações da sua conta.", () => window.AndroidPlayer?.openNotifications?.()));

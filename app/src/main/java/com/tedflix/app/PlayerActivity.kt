@@ -276,7 +276,9 @@ class PlayerActivity : Activity() {
         markStep("criando PlayerView")
         playerView = PlayerView(this).apply {
             useController = false
-            resizeMode = AspectRatioFrameLayout.RESIZE_MODE_FIT
+            // Preenche a área total do player; o vídeo pode cortar somente a sobra
+            // mínima de proporção, como no player original do app.
+            resizeMode = AspectRatioFrameLayout.RESIZE_MODE_ZOOM
             // O spinner interno ALWAYS continuava aparecendo mesmo com o vídeo pronto.
             // O loader customizado abaixo será controlado exclusivamente por STATE_READY.
             setShowBuffering(PlayerView.SHOW_BUFFERING_NEVER)

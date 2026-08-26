@@ -68,6 +68,7 @@ export const ICONES = {
   heart: '<path d="M20.8 8.8c0 5.1-8.8 10.4-8.8 10.4S3.2 13.9 3.2 8.8A4.8 4.8 0 0 1 12 6.2a4.8 4.8 0 0 1 8.8 2.6Z"/>',
   globe: '<circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3a14 14 0 0 1 0 18M12 3a14 14 0 0 0 0 18"/>',
   play: '<circle cx="12" cy="12" r="9"/><path d="m10 8 6 4-6 4z"/>',
+  info: '<circle cx="12" cy="12" r="9"/><path d="M12 10v6M12 7.2v.1"/>',
   bell: '<path d="M18 9a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9ZM10 21h4"/>',
   logout: '<path d="M10 17l5-5-5-5M15 12H3M21 19V5a2 2 0 0 0-2-2h-5"/>',
   chevron: '<path d="m9 5 7 7-7 7"/>',

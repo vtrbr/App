@@ -8,9 +8,9 @@
         android:name=".TedflixApplication"
         android:allowBackup="true"
         android:hardwareAccelerated="true"
-        android:icon="@mipmap/ic_tedflix_launcher"
+        android:icon="@drawable/tedflix_icon"
         android:label="Tedflix"
-        android:roundIcon="@mipmap/ic_tedflix_launcher"
+        android:roundIcon="@drawable/tedflix_icon"
         android:supportsRtl="true"
         android:theme="@style/Theme.Tedflix"
         android:usesCleartextTraffic="true">

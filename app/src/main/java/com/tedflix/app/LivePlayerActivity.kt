@@ -413,9 +413,9 @@ class LivePlayerActivity : Activity() {
         releaseNativePlayer()
         val view = PlayerView(this).apply {
             useController = false
-            // Mostrar o quadro inteiro; quando a proporção for diferente, as
-            // margens ficam pretas em vez de cortar conteúdo do canal.
-            resizeMode = AspectRatioFrameLayout.RESIZE_MODE_FIT
+            // Preenche a área total do player ao vivo, preservando o comportamento
+            // de tela cheia usado pelo player de filmes.
+            resizeMode = AspectRatioFrameLayout.RESIZE_MODE_ZOOM
             setShutterBackgroundColor(Color.BLACK)
             setBackgroundColor(Color.BLACK)
             setOnTouchListener { _, event ->
@@ -626,6 +626,9 @@ class LivePlayerActivity : Activity() {
     }
 
     private fun enterImmersiveMode() {
+        // Igualar a janela ao player de filmes: o ao vivo não deve ficar
+        // alguns pixels maior por desenhar atrás das barras do sistema.
+        window.setFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN, WindowManager.LayoutParams.FLAG_FULLSCREEN)
         val decorView = window.decorView
         @Suppress("DEPRECATION")
         val legacyFlags = View.SYSTEM_UI_FLAG_FULLSCREEN or View.SYSTEM_UI_FLAG_HIDE_NAVIGATION or View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY or View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN or View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION or View.SYSTEM_UI_FLAG_LAYOUT_STABLE
@@ -633,6 +636,8 @@ class LivePlayerActivity : Activity() {
             decorView.windowInsetsController?.let {
                 it.systemBarsBehavior = android.view.WindowInsetsController.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
                 it.hide(WindowInsets.Type.systemBars())
+                @Suppress("DEPRECATION")
+                decorView.systemUiVisibility = legacyFlags
             } ?: run {
                 @Suppress("DEPRECATION")
                 decorView.systemUiVisibility = legacyFlags

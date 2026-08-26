@@ -594,6 +594,12 @@ body.imersivo .topbar, body.imersivo .tabbar { display: none; }
 .cfg-choice-copy small { color: var(--muted-foreground); font-size: 12px; }
 .cfg-info-card { display: flex; align-items: center; gap: 12px; padding: 15px; color: var(--muted-foreground); }
 .cfg-info-card p { font-size: 12px; line-height: 1.45; }
+.cfg-version-card { display: flex; align-items: center; gap: 12px; min-height: 72px; padding: 15px 17px; }
+.cfg-version-card > .cfg-icon { flex: 0 0 auto; }
+.cfg-version-copy { display: flex; flex: 1; min-width: 0; flex-direction: column; gap: 4px; }
+.cfg-version-copy strong { font-size: 16px; }
+.cfg-version-copy small { color: var(--muted-foreground); font-size: 12px; line-height: 1.35; }
+.cfg-version-badge { flex: 0 0 auto; padding: 5px 9px; border: 1px solid color-mix(in oklab, #55db7a 60%, transparent); border-radius: 999px; color: #55db7a; font-size: 11px; font-weight: 900; text-transform: uppercase; }
 .cfg-profiles-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(104px, 1fr)); gap: 18px 10px; align-items: start; margin: 22px 0; }
 .cfg-profile-mini, .cfg-profile-add { position: relative; display: grid; justify-items: center; gap: 8px; min-width: 0; text-align: center; }
 .cfg-profile-mini { padding: 3px; }
