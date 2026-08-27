@@ -13,11 +13,12 @@ import android.widget.ProgressBar
 import android.widget.ScrollView
 import android.widget.TextView
 import androidx.media3.common.util.UnstableApi
+import com.tedflix.app.TedflixLoading
 
 @UnstableApi
 class NotificationActivity : Activity() {
     private lateinit var list: LinearLayout
-    private lateinit var progress: ProgressBar
+    private lateinit var loadingPanel: View
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -41,19 +42,19 @@ class NotificationActivity : Activity() {
         content.addView(list, LinearLayout.LayoutParams(-1, -2))
         scroll.addView(content)
         root.addView(scroll, FrameLayout.LayoutParams(-1, -1))
-        progress = ProgressBar(this).apply { visibility = View.GONE; indeterminateTintList = android.content.res.ColorStateList.valueOf(Color.rgb(229, 9, 20)) }
-        root.addView(progress, FrameLayout.LayoutParams(dp(42), dp(42), Gravity.CENTER))
+        loadingPanel = TedflixLoading.create(this).apply { visibility = View.GONE }
+        root.addView(loadingPanel, FrameLayout.LayoutParams(-1, -1))
         return root
     }
 
     private fun loadNotifications() {
         if (!::list.isInitialized) return
-        progress.visibility = View.VISIBLE
+        TedflixLoading.show(loadingPanel, true)
         list.removeAllViews()
         Thread {
             val result = AuthSession.notifications()
             runOnUiThread {
-                progress.visibility = View.GONE
+                TedflixLoading.show(loadingPanel, false)
                 if (!result.ok) {
                     list.addView(message(result.message.ifBlank { "Não foi possível carregar as notificações." }))
                     return@runOnUiThread

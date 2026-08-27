@@ -93,14 +93,14 @@ function resolver(hash) {
     return (r) => paginaDetalhe(r, { tipo: p[1], categoria: p[2], slug: p[3] });
   if (p[0] === "assistir" && p.length >= 3) {
     const params = new URLSearchParams(queryString);
-    let fila = [];
-    try {
-      const valor = params.get("fila");
-      fila = valor ? JSON.parse(valor) : [];
-      if (!Array.isArray(fila)) fila = [];
-    } catch (e) {
-      fila = [];
-    }
+    const lerLista = (nome) => {
+      try {
+        const valor = params.get(nome);
+        const lista = valor ? JSON.parse(valor) : [];
+        return Array.isArray(lista) ? lista : [];
+      } catch (_) { return []; }
+    };
+    const fila = lerLista("fila");
     return (r) => paginaAssistir(r, {
       categoria: p[1],
       slug: p[2],
@@ -110,6 +110,8 @@ function resolver(hash) {
       tipo: params.get("tipo") || "",
       serieCategoria: params.get("serieCategoria") || "",
       serieSlug: params.get("serieSlug") || "",
+      episodios: lerLista("episodios"),
+      recomendados: lerLista("recomendados"),
     });
   }
   if (p[0] === "config") return (r) => paginaConfiguracoes(r);

@@ -8,9 +8,22 @@
         <item name="android:statusBarColor">#050609</item>
         <item name="android:windowLightStatusBar">false</item>
         <item name="android:windowNoTitle">true</item>
-        <item name="android:windowBackground">@drawable/splash_screen</item>
+        <item name="android:windowBackground">@color/tedflix_splash_background</item>
         <item name="android:windowSplashScreenBackground">@color/tedflix_splash_background</item>
-        <item name="android:windowSplashScreenAnimatedIcon">@drawable/tedflix_icon</item>
+        <item name="android:windowSplashScreenAnimatedIcon">@drawable/splash_system_placeholder</item>
+    </style>
+
+    <style name="Theme.Tedflix.Splash" parent="android:style/Theme.Material.NoActionBar">
+        <item name="android:fontFamily">sans</item>
+        <item name="android:windowActionModeOverlay">true</item>
+        <item name="android:windowNoTitle">true</item>
+        <item name="android:windowFullscreen">true</item>
+        <item name="android:navigationBarColor">#050609</item>
+        <item name="android:statusBarColor">#050609</item>
+        <item name="android:windowLightStatusBar">false</item>
+        <item name="android:windowBackground">@color/tedflix_splash_background</item>
+        <item name="android:windowSplashScreenBackground">@color/tedflix_splash_background</item>
+        <item name="android:windowSplashScreenAnimatedIcon">@drawable/splash_system_placeholder</item>
     </style>
 
     <style name="Theme.Tedflix.Player" parent="android:style/Theme.Material.NoActionBar">

@@ -18,12 +18,13 @@ import android.widget.TextView
 import androidx.media3.common.util.UnstableApi
 import com.tedflix.app.ContinueWatchingStore
 import com.tedflix.app.MainActivity
+import com.tedflix.app.TedflixLoading
 import java.net.URL
 
 @UnstableApi
 class FavoritesActivity : Activity() {
     private lateinit var list: LinearLayout
-    private lateinit var progress: ProgressBar
+    private lateinit var loadingPanel: View
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -47,21 +48,21 @@ class FavoritesActivity : Activity() {
         content.addView(list, LinearLayout.LayoutParams(-1, -2))
         scroll.addView(content)
         root.addView(scroll, FrameLayout.LayoutParams(-1, -1))
-        progress = ProgressBar(this).apply { visibility = View.GONE; indeterminateTintList = android.content.res.ColorStateList.valueOf(Color.rgb(229, 9, 20)) }
-        root.addView(progress, FrameLayout.LayoutParams(dp(42), dp(42), Gravity.CENTER))
+        loadingPanel = TedflixLoading.create(this).apply { visibility = View.GONE }
+        root.addView(loadingPanel, FrameLayout.LayoutParams(-1, -1))
         return root
     }
 
     private fun loadFavorites() {
         if (!::list.isInitialized) return
-        progress.visibility = View.VISIBLE
+        TedflixLoading.show(loadingPanel, true)
         list.removeAllViews()
         Thread {
             val favoritesResult = AuthSession.listFavorites()
             val historyResult = AuthSession.continueWatching()
             val localProgress = ContinueWatchingStore.read(applicationContext)
             runOnUiThread {
-                progress.visibility = View.GONE
+                TedflixLoading.show(loadingPanel, false)
                 if (!favoritesResult.ok) {
                     list.addView(message(favoritesResult.message.ifBlank { "Não foi possível carregar os favoritos." }))
                     return@runOnUiThread
@@ -177,11 +178,11 @@ class FavoritesActivity : Activity() {
     }
 
     private fun removeFavorite(favorite: AuthSession.Favorite) {
-        progress.visibility = View.VISIBLE
+        TedflixLoading.show(loadingPanel, true)
         Thread {
             val result = AuthSession.toggleFavorite(favorite.filmeId, favorite.titulo, favorite.thumb)
             runOnUiThread {
-                progress.visibility = View.GONE
+                TedflixLoading.show(loadingPanel, false)
                 if (!result.ok) toast(result.message.ifBlank { "Não foi possível remover o favorito." }) else loadFavorites()
             }
         }.start()

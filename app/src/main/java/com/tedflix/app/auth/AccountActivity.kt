@@ -16,6 +16,7 @@ import android.widget.ScrollView
 import android.widget.TextView
 import androidx.media3.common.util.UnstableApi
 import com.tedflix.app.R
+import com.tedflix.app.TedflixLoading
 
 @UnstableApi
 class AccountActivity : Activity() {
@@ -23,7 +24,7 @@ class AccountActivity : Activity() {
     private lateinit var usernameInput: EditText
     private lateinit var currentPasswordInput: EditText
     private lateinit var newPasswordInput: EditText
-    private lateinit var progress: ProgressBar
+    private lateinit var loadingPanel: View
     private lateinit var refreshButton: Button
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -110,11 +111,8 @@ class AccountActivity : Activity() {
         content.addView(logout, LinearLayout.LayoutParams(-1, dp(52)).apply { topMargin = dp(4) })
         scroll.addView(content)
         root.addView(scroll, FrameLayout.LayoutParams(-1, -1))
-        progress = ProgressBar(this).apply {
-            visibility = View.GONE
-            indeterminateTintList = android.content.res.ColorStateList.valueOf(Color.rgb(229, 9, 20))
-        }
-        root.addView(progress, FrameLayout.LayoutParams(dp(42), dp(42), Gravity.CENTER))
+        loadingPanel = TedflixLoading.create(this).apply { visibility = View.GONE }
+        root.addView(loadingPanel, FrameLayout.LayoutParams(-1, -1))
         return root
     }
 
@@ -203,7 +201,7 @@ class AccountActivity : Activity() {
     private fun inputParams() = LinearLayout.LayoutParams(-1, dp(50)).apply { topMargin = dp(10) }
     private fun buttonParams() = LinearLayout.LayoutParams(-1, dp(48)).apply { topMargin = dp(10) }
     private fun cardParams() = LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = dp(14) }
-    private fun setBusy(busy: Boolean) { if (::progress.isInitialized) progress.visibility = if (busy) View.VISIBLE else View.GONE; if (::refreshButton.isInitialized) refreshButton.isEnabled = !busy }
+    private fun setBusy(busy: Boolean) { if (::loadingPanel.isInitialized) TedflixLoading.show(loadingPanel, busy); if (::refreshButton.isInitialized) refreshButton.isEnabled = !busy }
     private fun openLogin() { startActivity(Intent(this, AuthActivity::class.java).apply { addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_NEW_TASK) }); finish() }
     private fun toast(message: String) = android.widget.Toast.makeText(this, message, android.widget.Toast.LENGTH_LONG).show()
     private fun transparent() = android.graphics.drawable.ColorDrawable(Color.TRANSPARENT)

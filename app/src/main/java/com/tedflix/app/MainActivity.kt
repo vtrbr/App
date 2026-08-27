@@ -258,15 +258,7 @@ class MainActivity : Activity() {
         refreshHeaderBadges()
         getSharedPreferences(PROFILE_PREFS, Context.MODE_PRIVATE).edit().putString("selected_profile_id", profile.id).apply()
         content.visibility = View.GONE; shade.alpha = 0.98f
-        val loader = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL; gravity = Gravity.CENTER
-            addView(ProgressBar(this@MainActivity).apply {
-                indeterminateTintList = android.content.res.ColorStateList.valueOf(Color.rgb(229, 9, 20))
-            }, LinearLayout.LayoutParams(dp(48), dp(48)))
-            addView(TextView(this@MainActivity).apply {
-                text = "Carregando ${profile.name}..."; textSize = 14f; setTextColor(Color.WHITE); gravity = Gravity.CENTER
-            }, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(16) })
-        }
+        val loader = TedflixLoading.create(this@MainActivity)
         root.addView(loader, android.widget.FrameLayout.LayoutParams(-1, -1))
         root.postDelayed({ setupWebView() }, 320L)
     }
@@ -637,6 +629,8 @@ class MainActivity : Activity() {
             tipo: String? = null,
             serieCategoria: String? = null,
             serieSlug: String? = null,
+            episodiosJson: String? = null,
+            recomendadosJson: String? = null,
         ) {
             val categoriaValue = categoria.orEmpty().trim()
             val slugValue = slug.orEmpty().trim()
@@ -661,6 +655,8 @@ class MainActivity : Activity() {
                         putExtra(PlayerActivity.EXTRA_TIPO, tipo.orEmpty().trim())
                         putExtra(PlayerActivity.EXTRA_SERIE_CATEGORIA, serieCategoria.orEmpty().trim())
                         putExtra(PlayerActivity.EXTRA_SERIE_SLUG, serieSlug.orEmpty().trim())
+                        putExtra(PlayerActivity.EXTRA_SERIES_EPISODES, episodiosJson.orEmpty())
+                        putExtra(PlayerActivity.EXTRA_RECOMMENDATIONS, recomendadosJson.orEmpty())
                     }
                     activity.playerWasOpened = true
                     activity.startActivity(intent)
@@ -740,11 +736,13 @@ class MainActivity : Activity() {
         @JavascriptInterface
         fun refreshContinueWatching() {
             val profileId = AuthSession.activeProfileId()
-            if (profileId.isBlank() || !AuthSession.hasToken()) {
+            // A Home consulta diretamente o endpoint de progresso usando a sessão
+            // já preservada no dispositivo; ela não abre nem depende da tela de login.
+            if (!AuthSession.hasToken()) {
                 activity.runOnUiThread { notifyHistoryReady() }
                 return
             }
-            if (activity.historyRefreshInFlight && activity.remoteHistoryProfileId == profileId) return
+            if (activity.historyRefreshInFlight) return
             activity.historyRefreshInFlight = true
             activity.remoteHistoryProfileId = profileId
             activity.remoteHistoryCache = emptyList()
@@ -796,7 +794,9 @@ class MainActivity : Activity() {
                 val local = org.json.JSONArray(ContinueWatchingStore.toJson(activity))
                 if (!AuthSession.hasToken()) return local.toString()
                 val activeProfileId = AuthSession.activeProfileId()
-                val remote = if (activeProfileId.isNotBlank() && activeProfileId == activity.remoteHistoryProfileId) {
+                val remote = if (AuthSession.hasToken() &&
+                    (activeProfileId.isBlank() || activeProfileId == activity.remoteHistoryProfileId)
+                ) {
                     activity.remoteHistoryCache
                 } else {
                     emptyList()

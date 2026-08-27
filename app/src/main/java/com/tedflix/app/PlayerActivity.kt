@@ -53,6 +53,8 @@ class PlayerActivity : Activity() {
         const val EXTRA_TIPO = "tipo"
         const val EXTRA_SERIE_CATEGORIA = "serie_categoria"
         const val EXTRA_SERIE_SLUG = "serie_slug"
+        const val EXTRA_SERIES_EPISODES = "series_episodes"
+        const val EXTRA_RECOMMENDATIONS = "recommendations"
         const val PREFS = "tedflix_preferences"
         const val BUFFER_KEY = "buffer"
         private const val API_BASE = AuthSession.MOVIE_API_BASE
@@ -68,6 +70,7 @@ class PlayerActivity : Activity() {
     private lateinit var overlay: FrameLayout
     private lateinit var topBar: View
     private lateinit var nextButton: Button
+    private lateinit var episodesButton: Button
     private lateinit var progress: SeekBar
     private lateinit var currentTime: TextView
     private lateinit var durationTime: TextView
@@ -85,6 +88,10 @@ class PlayerActivity : Activity() {
     private var currentSerieCategoria = ""
     private var currentSerieSlug = ""
     private val nextEpisodes = mutableListOf<NextEpisode>()
+    private val allSeriesEpisodes = mutableListOf<NextEpisode>()
+    private val recommendations = mutableListOf<NextEpisode>()
+    private var remoteHistory = emptyList<AuthSession.HistoryItem>()
+    private var autoPlayTriggered = false
     private var controlsVisible = false
     private var playerReady = false
     private var activityDestroyed = false
@@ -108,6 +115,7 @@ class PlayerActivity : Activity() {
         val tipo: String = "episodio",
         val serieCategoria: String = "",
         val serieSlug: String = "",
+        val duracao: String = "",
     )
 
     private val progressRunnable = object : Runnable {
@@ -200,7 +208,15 @@ class PlayerActivity : Activity() {
         currentSerieSlug = intent.getStringExtra(EXTRA_SERIE_SLUG).orEmpty().trim()
         loadRemoteProgress()
         nextEpisodes.clear()
-        val raw = intent.getStringExtra(EXTRA_NEXT_EPISODES).orEmpty().trim()
+        allSeriesEpisodes.clear()
+        recommendations.clear()
+        readPlaybackItems(intent.getStringExtra(EXTRA_NEXT_EPISODES), nextEpisodes, "episodio")
+        readPlaybackItems(intent.getStringExtra(EXTRA_SERIES_EPISODES), allSeriesEpisodes, "episodio")
+        readPlaybackItems(intent.getStringExtra(EXTRA_RECOMMENDATIONS), recommendations, "filme")
+    }
+
+    private fun readPlaybackItems(rawJson: String?, target: MutableList<NextEpisode>, defaultType: String) {
+        val raw = rawJson.orEmpty().trim()
         if (raw.isBlank() || raw == "[]") return
         try {
             val array = JSONArray(raw)
@@ -208,18 +224,21 @@ class PlayerActivity : Activity() {
                 val item = array.optJSONObject(index) ?: continue
                 val categoria = item.optString("categoria").trim()
                 val slug = item.optString("slug").trim()
-                val titulo = item.optString("titulo").trim().ifBlank { "Próximo episódio" }
+                val titulo = item.optString("titulo").trim().ifBlank {
+                    if (defaultType.contains("epis", ignoreCase = true)) "Próximo episódio" else "Recomendado"
+                }
                 val filmeId = item.optString("filmeId").trim().ifBlank { slug }
                 val thumb = item.optString("thumb").trim()
-                val tipo = item.optString("tipo").trim().ifBlank { "episodio" }
+                val tipo = item.optString("tipo").trim().ifBlank { defaultType }
                 // A fila criada pela página da série pode não repetir o contexto em
                 // cada item; nesse caso, herdamos o contexto do episódio atual.
                 val serieCategoria = item.optString("serieCategoria").trim()
                     .ifBlank { currentSerieCategoria }
                 val serieSlug = item.optString("serieSlug").trim()
                     .ifBlank { currentSerieSlug }
+                val duracao = item.optString("duracao").trim()
                 if (categoria.isNotBlank() && slug.isNotBlank()) {
-                    nextEpisodes += NextEpisode(
+                    target += NextEpisode(
                         categoria,
                         slug,
                         titulo,
@@ -228,11 +247,12 @@ class PlayerActivity : Activity() {
                         tipo,
                         serieCategoria,
                         serieSlug,
+                        duracao,
                     )
                 }
             }
         } catch (error: Throwable) {
-            Log.w(TAG, "Fila de próximos episódios inválida; continuando sem avanço automático", error)
+            Log.w(TAG, "Lista de reprodução inválida; continuando sem avanço automático", error)
         }
     }
 
@@ -240,11 +260,19 @@ class PlayerActivity : Activity() {
         if (::nextButton.isInitialized) {
             nextButton.visibility = if (nextEpisodes.isNotEmpty() && playerReady) View.VISIBLE else View.GONE
         }
+        if (::episodesButton.isInitialized) {
+            episodesButton.visibility = if (allSeriesEpisodes.size > 1 && playerReady) View.VISIBLE else View.GONE
+        }
     }
 
     private fun playNextEpisode() {
         if (!isActivityAlive() || nextEpisodes.isEmpty()) return
         val next = nextEpisodes.removeAt(0)
+        startPlaybackItem(next)
+    }
+
+    private fun startPlaybackItem(next: NextEpisode) {
+        if (!isActivityAlive()) return
         currentCategoria = next.categoria
         currentSlug = next.slug
         currentTitle = next.titulo
@@ -257,6 +285,7 @@ class PlayerActivity : Activity() {
         remotePositionLoaded = false
         remotePositionApplied = false
         lastRemoteSaveAt = 0L
+        autoPlayTriggered = false
         loadRemoteProgress()
         titleView.text = currentTitle
         playerReady = false
@@ -268,6 +297,94 @@ class PlayerActivity : Activity() {
         player?.release()
         player = null
         initializePlayer()
+    }
+
+    private fun playRecommendation() {
+        if (!isActivityAlive() || recommendations.isEmpty()) return
+        val next = recommendations.removeAt(0)
+        nextEpisodes.clear()
+        allSeriesEpisodes.clear()
+        startPlaybackItem(next)
+    }
+
+    private fun showEpisodes() {
+        if (allSeriesEpisodes.isEmpty()) return
+        if (AuthSession.hasToken() && !remotePositionLoaded) {
+            Thread {
+                val result = AuthSession.continueWatching()
+                remoteHistory = result.value.orEmpty()
+                remotePositionLoaded = true
+                runOnUiThread { if (isActivityAlive()) showEpisodes() }
+            }.apply { name = "TedflixEpisodeProgress"; start() }
+            return
+        }
+        val container = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(4), 0, dp(4), 0)
+        }
+        lateinit var dialog: android.app.AlertDialog
+        allSeriesEpisodes.forEachIndexed { index, episode ->
+            val card = LinearLayout(this).apply {
+                orientation = LinearLayout.VERTICAL
+                setPadding(dp(18), dp(12), dp(18), dp(12))
+            }
+            val isCurrent = episode.categoria == currentCategoria && episode.slug == currentSlug
+            val label = if (isCurrent) "▶ ${episode.titulo}" else episode.titulo
+            card.addView(TextView(this).apply {
+                text = label
+                textSize = 16f
+                setTextColor(Color.WHITE)
+                setTypeface(typeface, android.graphics.Typeface.BOLD)
+            })
+            episode.duracao.takeIf { it.isNotBlank() }?.let { duration ->
+                card.addView(TextView(this).apply {
+                    text = duration
+                    textSize = 12f
+                    setTextColor(Color.LTGRAY)
+                }, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(3) })
+            }
+            val percent = episodeProgressPercent(episode)
+            if (percent > 0) {
+                card.addView(ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal).apply {
+                    max = 100
+                    progress = percent
+                    progressTintList = android.content.res.ColorStateList.valueOf(Color.rgb(229, 9, 20))
+                    progressBackgroundTintList = android.content.res.ColorStateList.valueOf(Color.rgb(75, 75, 80))
+                }, LinearLayout.LayoutParams(-1, dp(4)).apply { topMargin = dp(8) })
+            }
+            card.setOnClickListener {
+                if (isCurrent) {
+                    dialog.dismiss()
+                } else {
+                    nextEpisodes.clear()
+                    nextEpisodes.addAll(allSeriesEpisodes.drop(index + 1))
+                    dialog.dismiss()
+                    startPlaybackItem(episode)
+                }
+            }
+            container.addView(card, LinearLayout.LayoutParams(-1, -2))
+        }
+        val scroll = ScrollView(this).apply { addView(container) }
+        dialog = android.app.AlertDialog.Builder(this, R.style.TedflixDialog)
+            .setTitle("Episódios")
+            .setView(scroll)
+            .setNegativeButton("Fechar", null)
+            .create()
+        dialog.show()
+    }
+
+    private fun episodeProgressPercent(episode: NextEpisode): Int {
+        val local = ContinueWatchingStore.read(this).firstOrNull {
+            it.categoria == episode.categoria && it.slug == episode.slug
+        }
+        if (local != null) return local.percent
+        val remote = remoteHistory.firstOrNull {
+            it.filmeId == episode.filmeId || it.slug == episode.slug ||
+                (it.categoria == episode.categoria && it.slug == episode.slug)
+        } ?: return 0
+        val position = PlaybackRules.remoteTimeToMillis(remote.tempo) ?: return 0
+        val duration = PlaybackRules.catalogDurationToMillis(episode.duracao)
+        return PlaybackRules.percentage(position, duration)
     }
 
     private fun buildUi() {
@@ -307,9 +424,7 @@ class PlayerActivity : Activity() {
         loadingPanel = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             gravity = Gravity.CENTER
-            isClickable = true
-            // O carregamento segue o mesmo visual limpo dos controles:
-            // sem cartão, fundo escuro ou sombra por trás do spinner.
+            isClickable = false
             elevation = 0f
             setBackgroundColor(Color.TRANSPARENT)
             setPadding(dp(12), dp(8), dp(12), dp(8))
@@ -368,6 +483,12 @@ class PlayerActivity : Activity() {
             setOnClickListener { playNextEpisode() }
         }
         bar.addView(nextButton, LinearLayout.LayoutParams(dp(112), dp(54)))
+        episodesButton = controlButton("Episódios", 13).apply {
+            contentDescription = "Ver todos os episódios"
+            visibility = View.GONE
+            setOnClickListener { showEpisodes() }
+        }
+        bar.addView(episodesButton, LinearLayout.LayoutParams(dp(112), dp(54)))
         updateNextEpisodeButton()
         val reload = controlButton("↻", 28).apply {
             contentDescription = "Recarregar"
@@ -552,7 +673,7 @@ class PlayerActivity : Activity() {
         try {
             playerReady = false
             positionRestored = false
-            loading.visibility = View.VISIBLE
+            setLoadingVisible(true)
             setControlsVisible(false)
             markStep("criando MediaItem")
             val mediaItem = MediaItem.Builder()
@@ -701,6 +822,26 @@ class PlayerActivity : Activity() {
         progress.progress = if (lastDuration > 0) ((current * 1000L) / lastDuration).toInt().coerceIn(0, 1000) else 0
         currentTime.text = formatTime(current)
         durationTime.text = formatTime(lastDuration)
+        maybeAutoPlay(exo, current, lastDuration)
+    }
+
+    private fun maybeAutoPlay(exo: ExoPlayer, current: Long, duration: Long) {
+        if (!PlaybackRules.shouldAutoPlay(current, duration, exo.isPlaying, autoPlayTriggered)) return
+        val isEpisode = currentTipo.contains("epis", ignoreCase = true)
+        when {
+            isEpisode && nextEpisodes.isNotEmpty() -> {
+                autoPlayTriggered = true
+                savePlaybackProgress()
+                toast("Próximo episódio iniciando...")
+                playNextEpisode()
+            }
+            !isEpisode && recommendations.isNotEmpty() -> {
+                autoPlayTriggered = true
+                savePlaybackProgress()
+                toast("Próximo recomendado iniciando...")
+                playRecommendation()
+            }
+        }
     }
 
     private fun showQualityMenu() {
@@ -809,6 +950,7 @@ class PlayerActivity : Activity() {
         val slug = currentSlug
         Thread {
             val result = AuthSession.continueWatching()
+            remoteHistory = result.value.orEmpty()
             val match = result.value.orEmpty().firstOrNull { item ->
                 item.filmeId == filmeId ||
                     item.slug == slug ||
@@ -821,13 +963,7 @@ class PlayerActivity : Activity() {
     }
 
     private fun parseRemoteTime(raw: String): Long? {
-        val parts = raw.trim().split(":")
-        if (parts.size !in 2..3) return raw.toLongOrNull()?.times(1_000L)
-        return try {
-            val values = parts.map { it.toLong() }
-            val seconds = if (values.size == 3) values[0] * 3_600L + values[1] * 60L + values[2] else values[0] * 60L + values[1]
-            seconds * 1_000L
-        } catch (_: Throwable) { null }
+        return PlaybackRules.remoteTimeToMillis(raw)
     }
 
     private fun applyRemotePositionIfReady(exo: ExoPlayer) {

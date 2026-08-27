@@ -322,7 +322,7 @@ class LivePlayerActivity : Activity() {
         liveButton.visibility = View.GONE
         val server = servers[selectedIndex]
         serverButton.text = serverLabel()
-        loading?.visibility = View.VISIBLE
+        setLoadingVisible(true)
         showStatus("Procurando vídeo ${serverLabel()}...")
         startStreamTimeout(generation)
         resolveThread = Thread {
@@ -385,7 +385,7 @@ class LivePlayerActivity : Activity() {
         loadGeneration++
         resolveThread?.interrupt()
         releaseNativePlayer()
-        loading?.visibility = View.GONE
+        setLoadingVisible(false)
         retryButton.visibility = View.VISIBLE
         liveButton.visibility = View.GONE
         setChromeVisible(true)
@@ -413,9 +413,9 @@ class LivePlayerActivity : Activity() {
         releaseNativePlayer()
         val view = PlayerView(this).apply {
             useController = false
-            // Preenche a área total do player ao vivo, preservando o comportamento
-            // de tela cheia usado pelo player de filmes.
-            resizeMode = AspectRatioFrameLayout.RESIZE_MODE_ZOOM
+            // Ao vivo preserva o quadro inteiro, sem cortar placares, legendas ou logos.
+            // Filmes e episódios mantêm seu próprio modo em PlayerActivity.
+            resizeMode = AspectRatioFrameLayout.RESIZE_MODE_FIT
             setShutterBackgroundColor(Color.BLACK)
             setBackgroundColor(Color.BLACK)
             setOnTouchListener { _, event ->
@@ -450,19 +450,20 @@ class LivePlayerActivity : Activity() {
                         streamReady = true
                         streamTimeout?.let(chromeHandler::removeCallbacks)
                         streamTimeout = null
-                        loading?.visibility = View.GONE
+                        setLoadingVisible(false)
                         retryButton.visibility = View.GONE
+                        setChromeVisible(true)
                         updateLiveButton(exo)
                         showStatus("Ao vivo • ${serverLabel()}")
                     }
                     Player.STATE_BUFFERING -> {
                         if (!streamReady) {
-                            loading?.visibility = View.VISIBLE
+                            setLoadingVisible(true)
                             showStatus("Conectando ao vivo ${serverLabel()}...")
                         }
                     }
                     Player.STATE_ENDED -> {
-                        loading?.visibility = View.GONE
+                        setLoadingVisible(false)
                         liveButton.visibility = View.GONE
                         showStreamUnavailable("A transmissão terminou ou ficou indisponível.")
                     }
@@ -498,9 +499,13 @@ class LivePlayerActivity : Activity() {
             player.seekToDefaultPosition()
             player.playWhenReady = true
             liveButton.visibility = View.GONE
-            loading?.visibility = View.VISIBLE
+            setLoadingVisible(true)
             showStatus("Voltando ao ao vivo...")
         }
+    }
+
+    private fun setLoadingVisible(visible: Boolean) {
+        loading?.visibility = if (visible) View.VISIBLE else View.GONE
     }
 
     private fun resolveNativeStream(embedUrl: String): NativeStream? {
@@ -595,7 +600,9 @@ class LivePlayerActivity : Activity() {
         chromeTop.visibility = if (visible) View.VISIBLE else View.GONE
         chromeBottom.visibility = if (visible) View.VISIBLE else View.GONE
         chromeHandler.removeCallbacks(autoHideChrome)
-        if (visible) chromeHandler.postDelayed(autoHideChrome, 5_000L)
+        // Durante a abertura o Voltar e o seletor de servidor continuam acessíveis.
+        // A ocultação automática só começa depois que a transmissão estiver pronta.
+        if (visible && streamReady) chromeHandler.postDelayed(autoHideChrome, 5_000L)
     }
 
     private fun chooseServer() {
@@ -649,6 +656,7 @@ class LivePlayerActivity : Activity() {
     }
 
     override fun onBackPressed() {
+        setLoadingVisible(false)
         finish()
     }
 

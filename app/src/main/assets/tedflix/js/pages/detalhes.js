@@ -63,6 +63,8 @@ export default async function paginaDetalhe(raiz, { tipo, categoria, slug }) {
   const acao = el("div", { style: "display:flex;gap:10px;margin-top:14px;flex-wrap:wrap" }, [favoritoBtn]);
   if (tipo !== "serie") {
     const params = new URLSearchParams({ filmeId, thumb, tipo: dados.tipo || tipo || "filme" });
+    const recomendados = (dados.recomendados || []).map(dadosParaPlayer).filter(Boolean);
+    if (recomendados.length) params.set("recomendados", JSON.stringify(recomendados));
     acao.prepend(
       el("a", {
         class: "btn primary",
@@ -122,6 +124,49 @@ async function blocoTemporadas(categoria, slug, serieThumb = "") {
     return bloco;
   }
 
+  const dadosEpisodio = (ep, temporada = "") => {
+    const p = parseLink(ep.link || ep.link_assistir);
+    const cat = ep.categoria || p.categoria || categoria;
+    const sl = ep.slug || p.slug;
+    if (!sl) return null;
+    return {
+      categoria: cat,
+      slug: sl,
+      filmeId: String(ep.filmeId || ep.id || ep._id || sl),
+      thumb: ep.imagem || serieThumb,
+      titulo: `${ep.numero ? `${ep.numero}. ` : ""}${ep.titulo || "Episódio"}`,
+      duracao: ep.duracao || "",
+      temporada: String(temporada || ""),
+      tipo: "episodio",
+      serieCategoria: categoria,
+      serieSlug: slug,
+    };
+  };
+
+  let todosEpisodiosPromise = null;
+  const obterTodosEpisodios = () => {
+    if (!todosEpisodiosPromise) {
+      todosEpisodiosPromise = Promise.all(temporadas.map(async (temporada) => {
+        const episodios = await getEpisodios(categoria, slug, temporada.numero);
+        return episodios.map((ep) => dadosEpisodio(ep, temporada.numero)).filter(Boolean);
+      })).then((grupos) => grupos.flat());
+    }
+    return todosEpisodiosPromise;
+  };
+
+  const rotaAssistir = (info, fila = [], todos = []) => {
+    const queryParams = new URLSearchParams({
+      filmeId: info.filmeId || info.slug,
+      thumb: info.thumb || serieThumb,
+      tipo: "episodio",
+      serieCategoria: categoria,
+      serieSlug: slug,
+    });
+    if (fila.length) queryParams.set("fila", JSON.stringify(fila));
+    if (todos.length) queryParams.set("episodios", JSON.stringify(todos));
+    return `#/assistir/${info.categoria}/${info.slug}?${queryParams.toString()}`;
+  };
+
   async function carregar(num) {
     limpar(lista);
     lista.append(el("div", { class: "center" }, [el("div", { class: "spinner" })]));
@@ -133,41 +178,11 @@ async function blocoTemporadas(categoria, slug, serieThumb = "") {
         return;
       }
       const frag = document.createDocumentFragment();
-      const dadosEpisodio = (ep) => {
-        const p = parseLink(ep.link || ep.link_assistir);
-        const cat = ep.categoria || p.categoria || categoria;
-        const sl = ep.slug || p.slug;
-        if (!sl) return null;
-        return {
-          categoria: cat,
-          slug: sl,
-          filmeId: String(ep.filmeId || ep.id || ep._id || sl),
-          thumb: ep.imagem || serieThumb,
-          titulo: `${ep.numero ? `${ep.numero}. ` : ""}${ep.titulo || "Episódio"}`,
-        };
-      };
+      const episodiosDaTemporada = eps.map((ep) => dadosEpisodio(ep, num)).filter(Boolean);
       eps.forEach((ep, index) => {
-        const info = dadosEpisodio(ep);
-        const fila = eps.slice(index + 1)
-          .map(dadosEpisodio)
-          .filter(Boolean)
-          .map((item) => ({
-            ...item,
-            tipo: "episodio",
-            serieCategoria: categoria,
-            serieSlug: slug,
-          }));
-        const queryParams = new URLSearchParams({
-          filmeId: info?.filmeId || info?.slug || "",
-          thumb: info?.thumb || serieThumb,
-          tipo: "episodio",
-          serieCategoria: categoria,
-          serieSlug: slug,
-        });
-        if (fila.length) queryParams.set("fila", JSON.stringify(fila));
-        const query = info ? `?${queryParams.toString()}` : "";
-        frag.append(
-          el("a", { class: "ep", href: info ? `#/assistir/${info.categoria}/${info.slug}${query}` : "#" }, [
+        const info = episodiosDaTemporada[index];
+        const filaDaTemporada = episodiosDaTemporada.slice(index + 1);
+        const link = el("a", { class: "ep", href: info ? rotaAssistir(info, filaDaTemporada) : "#" }, [
             el("div", { class: "cap" }, [
               ep.imagem
                 ? el("img", {
@@ -185,8 +200,18 @@ async function blocoTemporadas(categoria, slug, serieThumb = "") {
                 el("span", { style: `width:${progresso.get(`${info.categoria}:${info.slug}`)}%` }),
               ]) : null,
             ]),
-          ]),
-        );
+          ]);
+        if (info) {
+          link.addEventListener("click", async (evento) => {
+            evento.preventDefault();
+            let todos = episodiosDaTemporada;
+            try { todos = await obterTodosEpisodios(); } catch (_) {}
+            const atual = todos.findIndex((item) => item.categoria === info.categoria && item.slug === info.slug);
+            const fila = atual >= 0 ? todos.slice(atual + 1) : filaDaTemporada;
+            location.hash = rotaAssistir(info, fila, todos);
+          });
+        }
+        frag.append(link);
       });
       lista.append(frag);
     } catch (e) {
@@ -207,6 +232,21 @@ async function blocoTemporadas(categoria, slug, serieThumb = "") {
 
   carregar(temporadas[0].numero);
   return bloco;
+}
+
+function dadosParaPlayer(item) {
+  const rota = parseLink(item?.link || item?.link_assistir);
+  const categoria = String(item?.categoria || rota.categoria || "").trim();
+  const slug = String(item?.slug || rota.slug || "").trim();
+  if (!categoria || !slug) return null;
+  return {
+    categoria,
+    slug,
+    filmeId: String(item?.filmeId || item?.id || item?._id || slug),
+    thumb: String(item?.imagem || item?.thumb || ""),
+    titulo: String(item?.titulo || "Recomendado"),
+    tipo: String(item?.tipo || "filme"),
+  };
 }
 
 function lerFavorito(filmeId) {

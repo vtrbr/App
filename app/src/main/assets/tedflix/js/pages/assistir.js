@@ -21,7 +21,7 @@ async function modoCinema(alvo) {
   }
 }
 
-export default async function paginaAssistir(raiz, { categoria, slug, fila = [], filmeId = "", thumb = "", tipo = "", serieCategoria = "", serieSlug = "" }) {
+export default async function paginaAssistir(raiz, { categoria, slug, fila = [], filmeId = "", thumb = "", tipo = "", serieCategoria = "", serieSlug = "", episodios = [], recomendados = [] }) {
   document.body.classList.add("imersivo");
 
   const page = el("div", { class: "page assistir" });
@@ -68,6 +68,8 @@ export default async function paginaAssistir(raiz, { categoria, slug, fila = [],
         tipo,
         serieCategoria,
         serieSlug,
+        JSON.stringify(Array.isArray(episodios) ? episodios : []),
+        JSON.stringify(Array.isArray(recomendados) ? recomendados : []),
       );
       return page;
     }
@@ -92,7 +94,7 @@ export default async function paginaAssistir(raiz, { categoria, slug, fila = [],
     const retry = el("button", { class: "btn primary" }, "Tentar novamente");
     retry.addEventListener("click", () => {
       raiz.innerHTML = "";
-      paginaAssistir(raiz, { categoria, slug, fila, filmeId, thumb, tipo, serieCategoria, serieSlug });
+      paginaAssistir(raiz, { categoria, slug, fila, filmeId, thumb, tipo, serieCategoria, serieSlug, episodios, recomendados });
     });
     caixa.append(
       el("div", { class: "center" }, [

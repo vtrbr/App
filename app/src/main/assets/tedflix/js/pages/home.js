@@ -154,6 +154,8 @@ async function carregarContinuarAssistindo() {
         const rota = detalheCategoria && detalheSlug
           ? `/titulo/${ehEpisodio ? "serie" : (tipo.toLowerCase() === "serie" ? "serie" : "filme")}/${detalheCategoria}/${detalheSlug}`
           : `#/favorito?titulo=${encodeURIComponent(tituloCard)}`;
+        const progressoDaApi = calcularProgressoDaApi(item.tempo, detalhe?.duracao || detalhePai?.duracao);
+        const episodioTitulo = String(item.titulo || detalhe?.titulo || "Episódio").trim();
         return {
           ...detalhePai,
           ...detalhe,
@@ -164,7 +166,12 @@ async function carregarContinuarAssistindo() {
           titulo: tituloCard,
           imagem: imagemCard,
           link_assistir: rota,
-          progresso: Number(item.percent || 0),
+          // A API de histórico pode informar apenas o tempo atual; quando o
+          // catálogo fornece duração, a barra é calculada sem depender do login.
+          progresso: Number(item.percent || progressoDaApi || 0),
+          continuarTexto: ehEpisodio
+            ? `Você está assistindo: ${tituloCard} — ${episodioTitulo}`
+            : (item.tempo ? `Continuar em ${item.tempo}` : "Continuar assistindo"),
         };
       })).filter(Boolean);
     const seriesJaExibidas = new Set();
@@ -180,4 +187,25 @@ async function carregarContinuarAssistindo() {
   } catch (e) {
     return [];
   }
+}
+
+function calcularProgressoDaApi(tempo, duracao) {
+  const atual = tempoParaSegundos(tempo);
+  const total = duracaoParaSegundos(duracao);
+  if (!atual || !total) return 0;
+  return Math.max(0, Math.min(99, Math.floor((atual * 100) / total)));
+}
+
+function tempoParaSegundos(valor) {
+  const partes = String(valor || "").trim().split(":").map(Number);
+  if (partes.length === 3 && partes.every(Number.isFinite)) return partes[0] * 3600 + partes[1] * 60 + partes[2];
+  if (partes.length === 2 && partes.every(Number.isFinite)) return partes[0] * 60 + partes[1];
+  return Number.isFinite(Number(valor)) ? Number(valor) : 0;
+}
+
+function duracaoParaSegundos(valor) {
+  const texto = String(valor || "").trim().toLowerCase();
+  const numero = Number((texto.match(/[\d.,]+/) || [""])[0].replace(",", "."));
+  if (!Number.isFinite(numero) || numero <= 0) return 0;
+  return texto.includes("h") ? numero * 3600 : numero * 60;
 }

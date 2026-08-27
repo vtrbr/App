@@ -4,6 +4,6 @@
     <item>
         <bitmap
             android:gravity="center"
-            android:src="@drawable/tedflix_icon" />
+            android:src="@drawable/tedflix_logo" />
     </item>
 </layer-list>

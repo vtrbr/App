@@ -43,7 +43,7 @@ export function cardTitulo(item, { size = "sm", eager = false } = {}) {
   return el("a", { class: "card", href: rotaDetalhe(item), "aria-label": item.titulo }, [
     thumb,
     el("p", { class: "nome" }, item.titulo || ""),
-    el("p", { class: "meta" }, [anoCurto(item.ano), item.tipo].filter(Boolean).join(" · ")),
+    el("p", { class: "meta" }, item.continuarTexto || [anoCurto(item.ano), item.tipo].filter(Boolean).join(" · ")),
   ]);
 }
 

@@ -19,6 +19,7 @@ import android.widget.ProgressBar
 import android.widget.ScrollView
 import android.widget.TextView
 import com.tedflix.app.MainActivity
+import com.tedflix.app.TedflixLoading
 import androidx.media3.common.util.UnstableApi
 import com.tedflix.app.R
 import java.util.Locale
@@ -30,7 +31,7 @@ class AuthActivity : Activity() {
     private lateinit var passwordInput: EditText
     private lateinit var enterButton: Button
     private lateinit var messageView: TextView
-    private lateinit var progress: ProgressBar
+    private lateinit var loadingPanel: View
     private var checkingExistingSession = false
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -122,11 +123,8 @@ class AuthActivity : Activity() {
             setOnClickListener { submit() }
         }
         content.addView(enterButton, LinearLayout.LayoutParams(-1, dp(58)).apply { bottomMargin = dp(12) })
-        progress = ProgressBar(this).apply {
-            visibility = View.GONE
-            indeterminateTintList = android.content.res.ColorStateList.valueOf(Color.WHITE)
-        }
-        content.addView(progress, LinearLayout.LayoutParams(dp(30), dp(30)).apply { gravity = Gravity.CENTER })
+        loadingPanel = TedflixLoading.create(this).apply { visibility = View.GONE }
+        content.addView(loadingPanel, LinearLayout.LayoutParams(-1, dp(176)))
         messageView = TextView(this).apply {
             textSize = 14f
             gravity = Gravity.CENTER
@@ -142,24 +140,7 @@ class AuthActivity : Activity() {
 
     private fun showCheckingSession() {
         val root = buildBackdrop()
-        val box = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            gravity = Gravity.CENTER
-            setPadding(dp(28), dp(24), dp(28), dp(24))
-        }
-        box.addView(ImageView(this).apply {
-            setImageResource(R.drawable.tedflix_auth_logo)
-            scaleType = ImageView.ScaleType.FIT_CENTER
-        }, LinearLayout.LayoutParams(-1, dp(90)).apply { bottomMargin = dp(22) })
-        box.addView(ProgressBar(this).apply {
-            indeterminateTintList = android.content.res.ColorStateList.valueOf(Color.WHITE)
-        }, LinearLayout.LayoutParams(dp(36), dp(36)).apply { gravity = Gravity.CENTER; bottomMargin = dp(14) })
-        box.addView(TextView(this).apply {
-            text = "Verificando sua sessão..."
-            textSize = 15f
-            setTextColor(Color.WHITE)
-            gravity = Gravity.CENTER
-        })
+        val box = TedflixLoading.create(this, "Verificando sua sessão...")
         root.addView(box, FrameLayout.LayoutParams(-1, -1).apply { gravity = Gravity.CENTER })
         setContentView(root)
     }
@@ -194,7 +175,7 @@ class AuthActivity : Activity() {
     private fun setLoading(loading: Boolean) {
         enterButton.isEnabled = !loading
         enterButton.text = if (loading) "ENTRANDO..." else "ENTRAR"
-        progress.visibility = if (loading) View.VISIBLE else View.GONE
+        TedflixLoading.show(loadingPanel, loading)
     }
 
     private fun showMessage(message: String, success: Boolean) {
