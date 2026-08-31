@@ -481,7 +481,11 @@ object AuthSession {
     }
 
     fun continueWatching(): Result<List<HistoryItem>> = authenticatedJson("GET", "/api/history/continue-watching").map { json ->
-        val array = json.optJSONArray("continuarAssistindo") ?: json.optJSONArray("history") ?: JSONArray()
+        val payload = json.optJSONObject("data") ?: json
+        val array = payload.optJSONArray("continuarAssistindo")
+            ?: payload.optJSONArray("history")
+            ?: payload.optJSONArray("resultados")
+            ?: JSONArray()
         buildList {
             for (i in 0 until array.length()) {
                 val item = array.optJSONObject(i) ?: continue
@@ -490,7 +494,7 @@ object AuthSession {
                         filmeId = item.optString("filmeId"),
                         titulo = item.optString("titulo"),
                         tempo = item.optString("tempo"),
-                        thumb = item.optString("thumb"),
+                        thumb = item.optString("thumb").ifBlank { item.optString("imagem") },
                         ultimoAcesso = item.optString("ultimoAcesso"),
                         categoria = item.optString("categoria"),
                         slug = item.optString("slug"),
