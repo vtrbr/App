@@ -996,18 +996,23 @@ class PlayerActivity : Activity() {
         val serieCategoria = currentSerieCategoria
         val serieSlug = currentSerieSlug
         Thread {
-            val result = AuthSession.saveProgress(
-                filmeId = filmeId,
-                titulo = titulo,
-                tempo = tempo,
-                thumb = thumb,
-                categoria = categoria,
-                slug = slug,
-                tipo = tipo,
-                serieCategoria = serieCategoria,
-                serieSlug = serieSlug,
-            )
-            if (!result.ok) Log.w(TAG, "Falha ao sincronizar histórico remoto: ${result.message}")
+            var result: AuthSession.Result<org.json.JSONObject>? = null
+            for (tentativa in 0 until 3) {
+                result = AuthSession.saveProgress(
+                    filmeId = filmeId,
+                    titulo = titulo,
+                    tempo = tempo,
+                    thumb = thumb,
+                    categoria = categoria,
+                    slug = slug,
+                    tipo = tipo,
+                    serieCategoria = serieCategoria,
+                    serieSlug = serieSlug,
+                )
+                if (result?.ok == true) break
+                if (tentativa < 2) try { Thread.sleep(350L * (tentativa + 1)) } catch (_: InterruptedException) { return@Thread }
+            }
+            if (result?.ok != true) Log.w(TAG, "Falha ao sincronizar histórico remoto após tentativas: ${result?.message}")
             else Log.d(TAG, "Histórico remoto sincronizado para $filmeId em $tempo")
         }.apply { name = "TedflixRemoteProgress"; start() }
     }
@@ -1190,7 +1195,13 @@ class PlayerActivity : Activity() {
     }
 
     override fun onBackPressed() {
+        savePlaybackProgress(forceRemote = true)
         finish()
+    }
+
+    override fun onUserLeaveHint() {
+        savePlaybackProgress(forceRemote = true)
+        super.onUserLeaveHint()
     }
 
     override fun onDestroy() {
