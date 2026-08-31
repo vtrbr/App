@@ -101,6 +101,7 @@ class PlayerActivity : Activity() {
     private var lastDuration = 0L
     private var positionRestored = false
     @Volatile private var lastRemoteSaveAt = 0L
+    @Volatile private var lastProgressToastAt = 0L
     @Volatile private var remotePositionMs: Long? = null
     @Volatile private var remotePositionLoaded = false
     private var remotePositionApplied = false
@@ -1048,6 +1049,13 @@ class PlayerActivity : Activity() {
             serieSlug = currentSerieSlug,
         )
         saveRemoteProgress(position, forceRemote)
+        if (forceRemote) {
+            val now = System.currentTimeMillis()
+            if (now - lastProgressToastAt > 1_500L) {
+                lastProgressToastAt = now
+                toast("Progresso registrado em ${formatTime(position)}")
+            }
+        }
         Log.d(TAG, "Progresso salvo: ${position}ms/${duration}ms para $categoriaPersistida:$slugPersistido")
     }
 

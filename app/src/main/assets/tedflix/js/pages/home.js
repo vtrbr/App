@@ -23,9 +23,12 @@ export default async function paginaInicio(raiz) {
   // lazy anterior podia executar a fileira enquanto o refresh remoto ainda
   // estava em andamento e fixá-la em "Nada por aqui agora".
   const continuar = await carregarContinuarAssistindo();
-  if (continuar.length) {
-    page.append(fileira({ titulo: "Continuar Assistindo", carregar: async () => continuar, limite: 20 }));
-  }
+  page.append(fileira({
+    titulo: "Continuar Assistindo",
+    carregar: async () => continuar,
+    limite: 20,
+    emptyText: "Ainda não há nada aqui",
+  }));
 
   page.append(
     fileira({ titulo: "Últimos filmes", carregar: getUltimosFilmes }),
