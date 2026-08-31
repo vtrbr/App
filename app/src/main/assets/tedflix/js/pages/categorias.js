@@ -8,7 +8,8 @@ export default function paginaCategorias(raiz) {
     style: "display:grid;grid-template-columns:repeat(2,1fr);gap:12px;margin-top:12px",
   });
 
-  CATEGORIAS.forEach((c) => {
+  const categoriasDaTela = [{ slug: "lancamentos", label: "Lançamentos" }, ...CATEGORIAS];
+  categoriasDaTela.forEach((c) => {
     grid.append(
       el(
         "a",

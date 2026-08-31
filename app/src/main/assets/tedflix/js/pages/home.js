@@ -29,7 +29,7 @@ export default async function paginaInicio(raiz) {
 
   page.append(
     fileira({ titulo: "Últimos filmes", carregar: getUltimosFilmes }),
-    fileira({ titulo: "Lançamentos", verTudo: "#/filmes", carregar: getLancamentos }),
+    fileira({ titulo: "Lançamentos", verTudo: "#/categoria/lancamentos", carregar: getLancamentos }),
     fileira({ titulo: "Séries", verTudo: "#/series", carregar: async () => (await getSeries()).slice(0, 24) }),
   );
 

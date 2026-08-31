@@ -1,6 +1,6 @@
 import { el, svgIcone } from "./dom.js";
 import { NAV, CATEGORIAS } from "./config.js";
-import { getFilmes, getSeries, getGenero, buscar, ehSerie, parseLink } from "./api.js";
+import { getFilmes, getSeries, getGenero, getLancamentos, buscar, ehSerie, parseLink } from "./api.js";
 import paginaInicio from "./pages/home.js";
 import { paginaCatalogo } from "./pages/catalogo.js";
 import paginaCategorias from "./pages/categorias.js";
@@ -42,10 +42,13 @@ function resolver(hash) {
   if (!p.length) return (r) => paginaInicio(r);
   if (p[0] === "filmes")
     return (r) => paginaCatalogo(r, { titulo: "Filmes", carregar: getFilmes });
+  if (p[0] === "lancamentos")
+    return (r) => paginaCatalogo(r, { titulo: "Lançamentos", carregar: getLancamentos });
   if (p[0] === "series")
     return (r) => paginaCatalogo(r, { titulo: "Séries", carregar: getSeries });
   if (p[0] === "categorias") return (r) => paginaCategorias(r);
   if (p[0] === "categoria" && p[1]) {
+    if (p[1] === "lancamentos") return (r) => paginaCatalogo(r, { titulo: "Lançamentos", carregar: getLancamentos });
     const cat = CATEGORIAS.find((c) => c.slug === p[1]);
     return (r) =>
       paginaCatalogo(r, { titulo: cat ? cat.label : p[1], carregar: () => getGenero(p[1]) });

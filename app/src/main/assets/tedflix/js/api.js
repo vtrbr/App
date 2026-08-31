@@ -113,9 +113,12 @@ export const getGenero = (slug) => {
   );
 };
 
-/** "Lançamentos": o servidor não tem endpoint próprio (dava 404).
- *  Usamos o topo do catálogo de filmes, que já vem por novidade. */
-export const getLancamentos = async () => (await getFilmes()).slice(0, 30);
+/** Lançamentos oficiais da Home, retornados pelo endpoint dedicado. */
+export const getLancamentos = () =>
+  getJSON("/home/lancamentos", TTL_LONGO).then((d) => {
+    const itens = d.lancamentos || d.filmes || d.resultados || d.itens || [];
+    return (Array.isArray(itens) ? itens : []).map((item) => normalizar(item));
+  });
 
 /* ---------------- BUSCA ---------------- */
 
