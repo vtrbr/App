@@ -55,7 +55,7 @@ object ContinueWatchingStore {
         serieCategoria: String = "",
         serieSlug: String = "",
     ) {
-        if (categoria.isBlank() || slug.isBlank() || positionMs < 10_000L || durationMs <= 0L) return
+        if (categoria.isBlank() || slug.isBlank() || positionMs <= 0L || durationMs <= 0L) return
         if (positionMs >= (durationMs * 0.9f).toLong()) {
             remove(context, categoria, slug)
             return

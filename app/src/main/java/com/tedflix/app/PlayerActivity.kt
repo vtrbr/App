@@ -979,13 +979,15 @@ class PlayerActivity : Activity() {
         }
     }
 
-    private fun saveRemoteProgress(positionMs: Long) {
-        if (!AuthSession.hasToken() || currentFilmeId.isBlank()) return
+    private fun saveRemoteProgress(positionMs: Long, force: Boolean = false) {
+        if (!AuthSession.hasToken()) return
+        val remoteFilmeId = currentFilmeId.ifBlank { currentSlug }
+        if (remoteFilmeId.isBlank()) return
         val now = System.currentTimeMillis()
-        if (now - lastRemoteSaveAt < 4_000L) return
+        if (!force && now - lastRemoteSaveAt < 4_000L) return
         lastRemoteSaveAt = now
         val tempo = formatRemoteTime(positionMs)
-        val filmeId = currentFilmeId
+        val filmeId = remoteFilmeId
         val titulo = currentTitle
         val thumb = currentThumb
         val categoria = currentCategoria
@@ -1018,16 +1020,19 @@ class PlayerActivity : Activity() {
         return String.format(Locale.US, "%02d:%02d:%02d", hours, minutes, seconds)
     }
 
-    private fun savePlaybackProgress() {
+    private fun savePlaybackProgress(forceRemote: Boolean = false) {
         val exo = player ?: return
         if (!playerReady) return
         val duration = exo.duration
         val position = exo.currentPosition
         if (duration <= 0L || position <= 0L) return
+        val categoriaPersistida = currentCategoria.ifBlank { if (currentTipo.contains("sér", true) || currentTipo.contains("ser", true)) "series" else "filmes" }
+        val slugPersistido = currentSlug.ifBlank { currentFilmeId }
+        if (slugPersistido.isBlank()) return
         ContinueWatchingStore.save(
             context = this,
-            categoria = currentCategoria,
-            slug = currentSlug,
+            categoria = categoriaPersistida,
+            slug = slugPersistido,
             titulo = currentTitle,
             positionMs = position,
             filmeId = currentFilmeId,
@@ -1037,17 +1042,17 @@ class PlayerActivity : Activity() {
             serieCategoria = currentSerieCategoria,
             serieSlug = currentSerieSlug,
         )
-        saveRemoteProgress(position)
-        Log.d(TAG, "Progresso salvo: ${position}ms/${duration}ms para $currentCategoria:$currentSlug")
+        saveRemoteProgress(position, forceRemote)
+        Log.d(TAG, "Progresso salvo: ${position}ms/${duration}ms para $categoriaPersistida:$slugPersistido")
     }
 
     override fun onPause() {
-        savePlaybackProgress()
+        savePlaybackProgress(forceRemote = true)
         super.onPause()
     }
 
     override fun onStop() {
-        savePlaybackProgress()
+        savePlaybackProgress(forceRemote = true)
         handler.removeCallbacks(progressRunnable)
         super.onStop()
     }
@@ -1189,6 +1194,7 @@ class PlayerActivity : Activity() {
     }
 
     override fun onDestroy() {
+        savePlaybackProgress(forceRemote = true)
         activityDestroyed = true
         validationThread?.interrupt()
         validationThread = null
