@@ -1,6 +1,6 @@
 import { el } from "../dom.js";
 import { hero } from "../components/hero.js";
-import { fileira } from "../components/row.js";
+import { fileira } from "../components/row.js?v=20260831-cw2";
 import {
   getCarousel,
   getUltimosFilmes,

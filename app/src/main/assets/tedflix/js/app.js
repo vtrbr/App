@@ -1,7 +1,7 @@
 import { el, svgIcone } from "./dom.js";
 import { NAV, CATEGORIAS } from "./config.js";
 import { getFilmes, getSeries, getGenero, getLancamentos, buscar, ehSerie, parseLink } from "./api.js";
-import paginaInicio from "./pages/home.js";
+import paginaInicio from "./pages/home.js?v=20260831-cw2";
 import { paginaCatalogo } from "./pages/catalogo.js";
 import paginaCategorias from "./pages/categorias.js";
 import paginaAgenda from "./pages/agenda.js";
