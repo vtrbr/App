@@ -909,16 +909,3 @@ html, body, #app, .app, .page, .cfg, .cfg-shell {
   .live-heading { align-items: flex-start; flex-direction: column; gap: 0; }
   .live-status { margin: 0 16px 0; }
 }
-
-.continue-empty {
-  width: 100%;
-  min-height: 96px;
-  display: grid;
-  place-items: center;
-  padding: 28px 20px;
-  border: 1px dashed rgba(255,255,255,.14);
-  border-radius: 16px;
-  color: rgba(255,255,255,.62);
-  text-align: center;
-  background: rgba(255,255,255,.025);
-}

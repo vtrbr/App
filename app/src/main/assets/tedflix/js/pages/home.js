@@ -1,6 +1,6 @@
 import { el } from "../dom.js";
 import { hero } from "../components/hero.js";
-import { fileira } from "../components/row.js?v=20260831-cw2";
+import { fileira } from "../components/row.js";
 import {
   getCarousel,
   getUltimosFilmes,
@@ -23,12 +23,9 @@ export default async function paginaInicio(raiz) {
   // lazy anterior podia executar a fileira enquanto o refresh remoto ainda
   // estava em andamento e fixá-la em "Nada por aqui agora".
   const continuar = await carregarContinuarAssistindo();
-  page.append(fileira({
-    titulo: "Continuar Assistindo",
-    carregar: async () => continuar,
-    limite: 20,
-    emptyText: "Ainda não há nada aqui",
-  }));
+  if (continuar.length) {
+    page.append(fileira({ titulo: "Continuar Assistindo", carregar: async () => continuar, limite: 20 }));
+  }
 
   page.append(
     fileira({ titulo: "Últimos filmes", carregar: getUltimosFilmes }),

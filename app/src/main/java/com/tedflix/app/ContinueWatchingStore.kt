@@ -55,15 +55,13 @@ object ContinueWatchingStore {
         serieCategoria: String = "",
         serieSlug: String = "",
     ) {
-        val categoriaSegura = categoria.ifBlank { if (tipo.contains("sér", true) || tipo.contains("ser", true)) "series" else "filmes" }
-        val slugSeguro = slug.ifBlank { filmeId }
-        if (slugSeguro.isBlank() || positionMs <= 0L || durationMs <= 0L) return
+        if (categoria.isBlank() || slug.isBlank() || positionMs < 10_000L || durationMs <= 0L) return
         if (positionMs >= (durationMs * 0.9f).toLong()) {
-            remove(context, categoriaSegura, slugSeguro)
+            remove(context, categoria, slug)
             return
         }
-        val entries = read(context).filterNot { it.key == "$categoriaSegura:$slugSeguro" }.toMutableList()
-        entries.add(0, Entry(categoriaSegura, slugSeguro, titulo.ifBlank { "Tedflix" }, filmeId.ifBlank { slugSeguro }, positionMs, durationMs, System.currentTimeMillis(), thumb, tipo, serieCategoria, serieSlug))
+        val entries = read(context).filterNot { it.key == "$categoria:$slug" }.toMutableList()
+        entries.add(0, Entry(categoria, slug, titulo.ifBlank { "Tedflix" }, filmeId.ifBlank { slug }, positionMs, durationMs, System.currentTimeMillis(), thumb, tipo, serieCategoria, serieSlug))
         write(context, entries.take(MAX_ITEMS))
     }
 

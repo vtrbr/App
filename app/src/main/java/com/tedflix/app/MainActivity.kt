@@ -595,7 +595,7 @@ class MainActivity : Activity() {
         if (::webView.isInitialized && playerWasOpened) {
             playerWasOpened = false
             webView.postDelayed({
-                webView.evaluateJavascript("if (location.hash.indexOf('#/assistir/') === 0) { history.back(); setTimeout(() => { if (location.hash === '#/' || location.hash === '') location.reload(); }, 180); }", null)
+                webView.evaluateJavascript("if (location.hash.indexOf('#/assistir/') === 0) history.back();", null)
             }, 120)
         }
     }

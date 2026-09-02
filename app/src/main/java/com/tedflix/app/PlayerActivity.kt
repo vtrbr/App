@@ -101,7 +101,6 @@ class PlayerActivity : Activity() {
     private var lastDuration = 0L
     private var positionRestored = false
     @Volatile private var lastRemoteSaveAt = 0L
-    @Volatile private var lastProgressToastAt = 0L
     @Volatile private var remotePositionMs: Long? = null
     @Volatile private var remotePositionLoaded = false
     private var remotePositionApplied = false
@@ -980,15 +979,13 @@ class PlayerActivity : Activity() {
         }
     }
 
-    private fun saveRemoteProgress(positionMs: Long, force: Boolean = false) {
-        if (!AuthSession.hasToken()) return
-        val remoteFilmeId = currentFilmeId.ifBlank { currentSlug }
-        if (remoteFilmeId.isBlank()) return
+    private fun saveRemoteProgress(positionMs: Long) {
+        if (!AuthSession.hasToken() || currentFilmeId.isBlank()) return
         val now = System.currentTimeMillis()
-        if (!force && now - lastRemoteSaveAt < 4_000L) return
+        if (now - lastRemoteSaveAt < 4_000L) return
         lastRemoteSaveAt = now
         val tempo = formatRemoteTime(positionMs)
-        val filmeId = remoteFilmeId
+        val filmeId = currentFilmeId
         val titulo = currentTitle
         val thumb = currentThumb
         val categoria = currentCategoria
@@ -997,23 +994,18 @@ class PlayerActivity : Activity() {
         val serieCategoria = currentSerieCategoria
         val serieSlug = currentSerieSlug
         Thread {
-            var result: AuthSession.Result<org.json.JSONObject>? = null
-            for (tentativa in 0 until 3) {
-                result = AuthSession.saveProgress(
-                    filmeId = filmeId,
-                    titulo = titulo,
-                    tempo = tempo,
-                    thumb = thumb,
-                    categoria = categoria,
-                    slug = slug,
-                    tipo = tipo,
-                    serieCategoria = serieCategoria,
-                    serieSlug = serieSlug,
-                )
-                if (result?.ok == true) break
-                if (tentativa < 2) try { Thread.sleep(350L * (tentativa + 1)) } catch (_: InterruptedException) { return@Thread }
-            }
-            if (result?.ok != true) Log.w(TAG, "Falha ao sincronizar histórico remoto após tentativas: ${result?.message}")
+            val result = AuthSession.saveProgress(
+                filmeId = filmeId,
+                titulo = titulo,
+                tempo = tempo,
+                thumb = thumb,
+                categoria = categoria,
+                slug = slug,
+                tipo = tipo,
+                serieCategoria = serieCategoria,
+                serieSlug = serieSlug,
+            )
+            if (!result.ok) Log.w(TAG, "Falha ao sincronizar histórico remoto: ${result.message}")
             else Log.d(TAG, "Histórico remoto sincronizado para $filmeId em $tempo")
         }.apply { name = "TedflixRemoteProgress"; start() }
     }
@@ -1026,19 +1018,16 @@ class PlayerActivity : Activity() {
         return String.format(Locale.US, "%02d:%02d:%02d", hours, minutes, seconds)
     }
 
-    private fun savePlaybackProgress(forceRemote: Boolean = false) {
+    private fun savePlaybackProgress() {
         val exo = player ?: return
         if (!playerReady) return
         val duration = exo.duration
         val position = exo.currentPosition
         if (duration <= 0L || position <= 0L) return
-        val categoriaPersistida = currentCategoria.ifBlank { if (currentTipo.contains("sér", true) || currentTipo.contains("ser", true)) "series" else "filmes" }
-        val slugPersistido = currentSlug.ifBlank { currentFilmeId }
-        if (slugPersistido.isBlank()) return
         ContinueWatchingStore.save(
             context = this,
-            categoria = categoriaPersistida,
-            slug = slugPersistido,
+            categoria = currentCategoria,
+            slug = currentSlug,
             titulo = currentTitle,
             positionMs = position,
             filmeId = currentFilmeId,
@@ -1048,24 +1037,17 @@ class PlayerActivity : Activity() {
             serieCategoria = currentSerieCategoria,
             serieSlug = currentSerieSlug,
         )
-        saveRemoteProgress(position, forceRemote)
-        if (forceRemote) {
-            val now = System.currentTimeMillis()
-            if (now - lastProgressToastAt > 1_500L) {
-                lastProgressToastAt = now
-                toast("Progresso registrado em ${formatTime(position)}")
-            }
-        }
-        Log.d(TAG, "Progresso salvo: ${position}ms/${duration}ms para $categoriaPersistida:$slugPersistido")
+        saveRemoteProgress(position)
+        Log.d(TAG, "Progresso salvo: ${position}ms/${duration}ms para $currentCategoria:$currentSlug")
     }
 
     override fun onPause() {
-        savePlaybackProgress(forceRemote = true)
+        savePlaybackProgress()
         super.onPause()
     }
 
     override fun onStop() {
-        savePlaybackProgress(forceRemote = true)
+        savePlaybackProgress()
         handler.removeCallbacks(progressRunnable)
         super.onStop()
     }
@@ -1203,17 +1185,10 @@ class PlayerActivity : Activity() {
     }
 
     override fun onBackPressed() {
-        savePlaybackProgress(forceRemote = true)
         finish()
     }
 
-    override fun onUserLeaveHint() {
-        savePlaybackProgress(forceRemote = true)
-        super.onUserLeaveHint()
-    }
-
     override fun onDestroy() {
-        savePlaybackProgress(forceRemote = true)
         activityDestroyed = true
         validationThread?.interrupt()
         validationThread = null
