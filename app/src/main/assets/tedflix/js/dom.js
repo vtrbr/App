@@ -78,6 +78,7 @@ export const ICONES = {
   trash: '<path d="M5 7h14M10 11v6M14 11v6M7 7l1 14h8l1-14M9 7V4h6v3"/>',
   plus: '<path d="M12 5v14M5 12h14"/>',
   refresh: '<path d="M20 11a8 8 0 0 0-14.7-4L3 10M3 5v5h5M4 13a8 8 0 0 0 14.7 4L21 14m0 5v-5h-5"/>',
+  developer: '<path d="m12 3 7 2.6v5.1c0 4.5-2.9 8-7 10.3-4.1-2.3-7-5.8-7-10.3V5.6L12 3Z"/><path d="m9.2 10.2-2 1.8 2 1.8M14.8 10.2l2 1.8-2 1.8M13.5 9l-3 6"/>',
 
 };
 

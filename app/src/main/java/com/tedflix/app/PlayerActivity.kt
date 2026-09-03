@@ -1,7 +1,11 @@
 package com.tedflix.app
 
 import android.app.Activity
+import android.graphics.Canvas
 import android.graphics.Color
+import android.graphics.Paint
+import android.graphics.RectF
+import android.graphics.drawable.GradientDrawable
 import android.net.Uri
 import android.os.Bundle
 import android.os.Handler
@@ -106,6 +110,33 @@ class PlayerActivity : Activity() {
     private var remotePositionApplied = false
     private val handler = Handler(Looper.getMainLooper())
     private val hideRunnable = Runnable { setControlsVisible(false) }
+    private class WifiErrorIconView(context: android.content.Context) : View(context) {
+        private val stroke = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            style = Paint.Style.STROKE
+            strokeWidth = 3.2f * resources.displayMetrics.density
+            strokeCap = Paint.Cap.ROUND
+            color = Color.rgb(145, 145, 152)
+        }
+        private val redStroke = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            style = Paint.Style.STROKE
+            strokeWidth = 3.6f * resources.displayMetrics.density
+            strokeCap = Paint.Cap.ROUND
+            color = Color.rgb(245, 32, 52)
+        }
+        override fun onDraw(canvas: Canvas) {
+            super.onDraw(canvas)
+            val d = resources.displayMetrics.density
+            val cx = width * 0.48f
+            val cy = height * 0.48f
+            canvas.drawArc(RectF(cx - 32 * d, cy - 24 * d, cx + 32 * d, cy + 28 * d), 218f, 104f, false, stroke)
+            canvas.drawArc(RectF(cx - 22 * d, cy - 13 * d, cx + 22 * d, cy + 23 * d), 218f, 104f, false, stroke)
+            canvas.drawArc(RectF(cx - 11 * d, cy - 2 * d, cx + 11 * d, cy + 17 * d), 218f, 104f, false, stroke)
+            canvas.drawCircle(cx, cy + 20 * d, 2.6f * d, Paint(Paint.ANTI_ALIAS_FLAG).apply { color = stroke.color; style = Paint.Style.FILL })
+            canvas.drawLine(cx + 16 * d, cy + 8 * d, cx + 34 * d, cy + 26 * d, redStroke)
+            canvas.drawLine(cx + 34 * d, cy + 8 * d, cx + 16 * d, cy + 26 * d, redStroke)
+        }
+    }
+
     private data class NextEpisode(
         val categoria: String,
         val slug: String,
@@ -1072,66 +1103,92 @@ class PlayerActivity : Activity() {
             return
         }
         if (activityDestroyed || isFinishing || isDestroyedCompat()) return
-        val failedStep = lastStep
-        val activityName = this@PlayerActivity.javaClass.simpleName
-        markStep("diagnóstico exibido: $stage")
+        markStep("tela amigável de erro exibida: $stage")
         validationThread?.interrupt()
         validationThread = null
         player?.release()
         player = null
-        val stack = Log.getStackTraceString(error).take(8_000)
-        val cause = generateSequence(error as Throwable?) { it.cause }
-            .toList().drop(1).firstOrNull()?.let { "${it.javaClass.name}: ${it.message ?: "(sem mensagem)"}" }
-            ?: "(sem causa encadeada)"
-        val details = buildString {
-            appendLine("TEDFLIX — DIAGNÓSTICO DE REPRODUÇÃO")
-            appendLine()
-            appendLine("Etapa: $stage")
-            appendLine("Activity: $activityName")
-            appendLine("Última etapa registrada: $failedStep")
-            appendLine("Tipo: ${error.javaClass.name}")
-            appendLine("Mensagem: ${error.message ?: "(sem mensagem)"}")
-            appendLine("Causa: $cause")
-            appendLine("Stream URL: ${diagnosticUrl.ifBlank { "(não montada)" }}")
-            if (!extra.isNullOrBlank()) {
-                appendLine()
-                appendLine(extra)
-            }
-            if (error is StreamValidationException) {
-                appendLine()
-                appendLine(error.details)
-            }
-            appendLine()
-            appendLine("Stack trace:")
-            append(stack)
-        }
-        val root = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            setPadding(dp(20), dp(20), dp(20), dp(20))
+
+        val root = FrameLayout(this).apply {
             setBackgroundColor(Color.BLACK)
         }
-        val heading = TextView(this).apply {
+        val backTop = controlButton("‹", 34).apply {
+            contentDescription = "Voltar"
+            setOnClickListener { finish() }
+        }
+        root.addView(backTop, FrameLayout.LayoutParams(dp(54), dp(54)).apply {
+            gravity = Gravity.TOP or Gravity.START
+            topMargin = dp(14)
+            leftMargin = dp(22)
+        })
+
+        val content = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            gravity = Gravity.CENTER_HORIZONTAL
+            setPadding(dp(22), 0, dp(22), dp(18))
+        }
+        val errorMark = TextView(this).apply {
+            text = "!"
+            gravity = Gravity.CENTER
+            textSize = 38f
+            setTextColor(Color.rgb(245, 32, 52))
+            setTypeface(typeface, android.graphics.Typeface.BOLD)
+            background = GradientDrawable().apply {
+                shape = GradientDrawable.OVAL
+                setColor(Color.TRANSPARENT)
+                setStroke(dp(3), Color.rgb(245, 32, 52))
+            }
+        }
+        content.addView(errorMark, LinearLayout.LayoutParams(dp(116), dp(116)).apply { bottomMargin = dp(26) })
+        content.addView(TextView(this).apply {
             text = "Erro ao abrir o player"
-            textSize = 22f
+            textSize = 28f
+            gravity = Gravity.CENTER
             setTextColor(Color.WHITE)
             setTypeface(typeface, android.graphics.Typeface.BOLD)
+        }, LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = dp(14) })
+        content.addView(TextView(this).apply {
+            text = "Não foi possível reproduzir este conteúdo.\nVerifique sua conexão com a internet e tente novamente."
+            textSize = 16f
+            gravity = Gravity.CENTER
+            setTextColor(Color.rgb(190, 190, 196))
+            setLineSpacing(0f, 1.18f)
+        }, LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = dp(28) })
+
+        val notice = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(dp(22), dp(18), dp(22), dp(18))
+            background = GradientDrawable().apply {
+                shape = GradientDrawable.RECTANGLE
+                cornerRadius = dp(18).toFloat()
+                setColor(Color.rgb(20, 20, 20))
+                setStroke(dp(1), Color.rgb(48, 48, 52))
+            }
         }
-        root.addView(heading, LinearLayout.LayoutParams(-1, -2))
-        val scroll = ScrollView(this).apply {
-            isFillViewport = true
+        notice.minimumHeight = dp(132)
+        notice.addView(WifiErrorIconView(this), LinearLayout.LayoutParams(dp(86), dp(92)))
+        notice.addView(LinearLayout(this@PlayerActivity).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(14), 0, 0, 0)
             addView(TextView(this@PlayerActivity).apply {
-                text = details
-                textSize = 12f
+                text = "Falha de conexão"
+                textSize = 18f
                 setTextColor(Color.WHITE)
-                typeface = android.graphics.Typeface.MONOSPACE
-                setPadding(0, dp(18), 0, dp(18))
-                setTextIsSelectable(true)
+                setTypeface(typeface, android.graphics.Typeface.BOLD)
             })
-        }
-        root.addView(scroll, LinearLayout.LayoutParams(-1, 0, 1f))
+            addView(TextView(this@PlayerActivity).apply {
+                text = "Não foi possível conectar ao servidor.\nTente novamente mais tarde."
+                textSize = 15f
+                setTextColor(Color.rgb(175, 175, 182))
+                setLineSpacing(0f, 1.16f)
+            })
+        }, LinearLayout.LayoutParams(0, -2, 1f))
+        content.addView(notice, LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = dp(30) })
+
         val actions = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.CENTER
+            gravity = Gravity.CENTER_VERTICAL
         }
         val retry = controlButton("Tentar novamente", 14).apply {
             setOnClickListener {
@@ -1141,9 +1198,19 @@ class PlayerActivity : Activity() {
             }
         }
         val back = controlButton("Voltar", 14).apply { setOnClickListener { finish() } }
-        actions.addView(retry, LinearLayout.LayoutParams(0, dp(52), 1f))
-        actions.addView(back, LinearLayout.LayoutParams(0, dp(52), 1f))
-        root.addView(actions, LinearLayout.LayoutParams(-1, dp(64)))
+        actions.addView(retry, LinearLayout.LayoutParams(0, dp(58), 1f))
+        actions.addView(back, LinearLayout.LayoutParams(0, dp(58), 1f))
+        content.addView(actions, LinearLayout.LayoutParams(-1, dp(64)))
+        val contentScroll = ScrollView(this).apply {
+            isFillViewport = true
+            overScrollMode = View.OVER_SCROLL_NEVER
+            addView(content, android.view.ViewGroup.LayoutParams(-1, -2))
+        }
+        root.addView(contentScroll, FrameLayout.LayoutParams(-1, -1).apply {
+            gravity = Gravity.CENTER
+            topMargin = dp(8)
+            bottomMargin = dp(8)
+        })
         setContentView(root)
     }
 

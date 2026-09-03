@@ -280,6 +280,15 @@ export default async function paginaConfiguracoes(raiz) {
     ]);
     page.append(versionCard);
 
+    const developerCard = el("section", { class: "cfg-card cfg-developer-card" }, [
+      el("span", { class: "cfg-developer-mark" }, [icon("developer")]),
+      el("div", { class: "cfg-developer-copy" }, [
+        el("span", {}, "Desenvolvido por "),
+        el("strong", {}, "Vtrbr"),
+      ]),
+    ]);
+    page.append(developerCard);
+
     const system = el("section", { class: "cfg-card cfg-card-group" });
     system.append(linhaOpcao("bell", "Notificações", "Gerencie avisos e atualizações da sua conta.", () => window.AndroidPlayer?.openNotifications?.()));
     system.append(linhaOpcao("gear", "Fontes de conteúdo", "Escolha o servidor principal ou uma fonte alternativa.", () => window.AndroidPlayer?.openSources?.()));
