@@ -11,8 +11,8 @@ android {
         applicationId = "com.tedflix.app"
         minSdk = 24
         targetSdk = 35
-        versionCode = 51
-        versionName = "1.28.12"
+        versionCode = 52
+        versionName = "1.28.13"
     }
 
     buildTypes {
@@ -49,5 +49,6 @@ dependencies {
     implementation("androidx.media3:media3-exoplayer:1.6.1")
     implementation("androidx.media3:media3-exoplayer-hls:1.6.1")
     implementation("androidx.media3:media3-ui:1.6.1")
+    implementation("androidx.media3:media3-session:1.6.1")
     testImplementation("junit:junit:4.13.2")
 }

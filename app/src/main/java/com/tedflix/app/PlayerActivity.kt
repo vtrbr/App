@@ -1,6 +1,7 @@
 package com.tedflix.app
 
 import android.app.Activity
+import android.content.Intent
 import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Paint
@@ -726,6 +727,19 @@ class PlayerActivity : Activity() {
                 .setLoadControl(loadControl)
                 .build()
             player = exo
+            PlaybackService.sharedPlayer = exo
+            PlaybackService.sessionIntent = Intent(this, PlayerActivity::class.java).apply {
+                putExtra(EXTRA_CATEGORIA, currentCategoria)
+                putExtra(EXTRA_SLUG, currentSlug)
+                putExtra(EXTRA_TITULO, currentTitle)
+                putExtra(EXTRA_FILME_ID, currentFilmeId)
+                putExtra(EXTRA_THUMB, currentThumb)
+                putExtra(EXTRA_TIPO, currentTipo)
+                putExtra(EXTRA_SERIE_CATEGORIA, currentSerieCategoria)
+                putExtra(EXTRA_SERIE_SLUG, currentSerieSlug)
+                addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP)
+            }
+            startService(Intent(this, PlaybackService::class.java))
             playerView.player = exo
             exo.addListener(object : Player.Listener {
                 override fun onPlaybackStateChanged(state: Int) {
@@ -1257,7 +1271,14 @@ class PlayerActivity : Activity() {
         handler.removeCallbacks(progressRunnable)
         handler.removeCallbacks(hideRunnable)
         if (::playerView.isInitialized) playerView.player = null
-        player?.release()
+        // O PlaybackService mantém o player vivo para a reprodução em segundo
+        // plano. A Activity apenas deixa de exibi-lo quando é destruída.
+        if (isFinishing && PlaybackService.sharedPlayer === player) {
+            stopService(Intent(this, PlaybackService::class.java))
+            PlaybackService.sharedPlayer?.release()
+            PlaybackService.sharedPlayer = null
+            PlaybackService.sessionIntent = null
+        }
         player = null
         super.onDestroy()
     }
