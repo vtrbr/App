@@ -1,7 +1,6 @@
 package com.tedflix.app
 
 import android.app.Activity
-import android.content.Intent
 import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Paint
@@ -69,8 +68,6 @@ class PlayerActivity : Activity() {
             "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 " +
                 "(KHTML, like Gecko) Chrome/150.0.0.0 Safari/537.36"
         private const val TAG = "TedflixPlayer"
-        private const val MAX_PLAYBACK_RETRIES = 3
-        private const val PLAYBACK_RETRY_DELAY_MS = 8_000L
     }
 
     private lateinit var playerView: PlayerView
@@ -113,8 +110,6 @@ class PlayerActivity : Activity() {
     private var remotePositionApplied = false
     private val handler = Handler(Looper.getMainLooper())
     private val hideRunnable = Runnable { setControlsVisible(false) }
-    private var playbackRetryCount = 0
-    private var playbackRetryRunnable: Runnable? = null
     private class WifiErrorIconView(context: android.content.Context) : View(context) {
         private val stroke = Paint(Paint.ANTI_ALIAS_FLAG).apply {
             style = Paint.Style.STROKE
@@ -707,9 +702,6 @@ class PlayerActivity : Activity() {
         requestProperties: Map<String, String>,
     ) {
         try {
-            playbackRetryRunnable?.let(handler::removeCallbacks)
-            playbackRetryRunnable = null
-            playbackRetryCount = 0
             playerReady = false
             positionRestored = false
             setLoadingVisible(true)
@@ -734,27 +726,11 @@ class PlayerActivity : Activity() {
                 .setLoadControl(loadControl)
                 .build()
             player = exo
-            PlaybackService.sharedPlayer = exo
-            PlaybackService.sessionIntent = Intent(this, PlayerActivity::class.java).apply {
-                putExtra(EXTRA_CATEGORIA, currentCategoria)
-                putExtra(EXTRA_SLUG, currentSlug)
-                putExtra(EXTRA_TITULO, currentTitle)
-                putExtra(EXTRA_FILME_ID, currentFilmeId)
-                putExtra(EXTRA_THUMB, currentThumb)
-                putExtra(EXTRA_TIPO, currentTipo)
-                putExtra(EXTRA_SERIE_CATEGORIA, currentSerieCategoria)
-                putExtra(EXTRA_SERIE_SLUG, currentSerieSlug)
-                addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP)
-            }
-            startService(Intent(this, PlaybackService::class.java))
             playerView.player = exo
             exo.addListener(object : Player.Listener {
                 override fun onPlaybackStateChanged(state: Int) {
                     if (activityDestroyed) return
                     if (state == Player.STATE_READY) {
-                        playbackRetryRunnable?.let(handler::removeCallbacks)
-                        playbackRetryRunnable = null
-                        playbackRetryCount = 0
                         playerReady = true
                         restoreSavedPosition(exo)
                         applyRemotePositionIfReady(exo)
@@ -786,24 +762,7 @@ class PlayerActivity : Activity() {
                     if (activityDestroyed) return
                     markStep("erro de playback: ${error.errorCodeName}")
                     Log.e(TAG, "Falha ao carregar HLS: ${error.errorCodeName}", error)
-                    if (playbackRetryCount < MAX_PLAYBACK_RETRIES) {
-                        playbackRetryCount += 1
-                        setLoadingVisible(true)
-                        setControlsVisible(false)
-                        val tentativa = playbackRetryCount
-                        markStep("aguardando retry de playback $tentativa/$MAX_PLAYBACK_RETRIES")
-                        playbackRetryRunnable?.let(handler::removeCallbacks)
-                        playbackRetryRunnable = Runnable {
-                            if (!isActivityAlive() || player !== exo || playerReady) return@Runnable
-                            markStep("tentando playback novamente $tentativa/$MAX_PLAYBACK_RETRIES")
-                            exo.prepare()
-                            exo.playWhenReady = true
-                        }
-                        handler.postDelayed(playbackRetryRunnable!!, PLAYBACK_RETRY_DELAY_MS)
-                    } else {
-                        playbackRetryRunnable = null
-                        showDiagnosticScreen("Playback Media3/HTTP", error)
-                    }
+                    showDiagnosticScreen("Playback Media3/HTTP", error)
                 }
             })
             exo.setMediaSource(mediaSource)
@@ -1297,17 +1256,8 @@ class PlayerActivity : Activity() {
         validationThread = null
         handler.removeCallbacks(progressRunnable)
         handler.removeCallbacks(hideRunnable)
-        playbackRetryRunnable?.let(handler::removeCallbacks)
-        playbackRetryRunnable = null
         if (::playerView.isInitialized) playerView.player = null
-        // O PlaybackService mantém o player vivo para a reprodução em segundo
-        // plano. A Activity apenas deixa de exibi-lo quando é destruída.
-        if (isFinishing && PlaybackService.sharedPlayer === player) {
-            stopService(Intent(this, PlaybackService::class.java))
-            PlaybackService.sharedPlayer?.release()
-            PlaybackService.sharedPlayer = null
-            PlaybackService.sessionIntent = null
-        }
+        player?.release()
         player = null
         super.onDestroy()
     }
