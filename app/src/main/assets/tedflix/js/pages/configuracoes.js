@@ -4,8 +4,8 @@ import { medir, lerCache, nivel, ROTULO } from "../net.js";
 
 const AVATAR_SEEDS = Array.from({ length: 15 }, (_, index) => `tedflix-avatar-${String(index + 1).padStart(2, "0")}`);
 const DEFAULT_SEED = AVATAR_SEEDS[0];
-const APP_VERSION = "1.28.11";
-const APP_COMMIT_COUNT = 50;
+const APP_VERSION = "1.28.12";
+const APP_COMMIT_COUNT = 51;
 
 function avatarUrl(seed, size = 256) {
   return `https://api.dicebear.com/10.x/fun-emoji/png?seed=${encodeURIComponent(seed || DEFAULT_SEED)}&size=${size}`;

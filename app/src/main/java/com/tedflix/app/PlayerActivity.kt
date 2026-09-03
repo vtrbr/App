@@ -1125,7 +1125,7 @@ class PlayerActivity : Activity() {
         val content = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             gravity = Gravity.CENTER_HORIZONTAL
-            setPadding(dp(22), 0, dp(22), dp(18))
+            setPadding(dp(18), 0, dp(18), dp(8))
         }
         val errorMark = TextView(this).apply {
             text = "!"
@@ -1139,26 +1139,26 @@ class PlayerActivity : Activity() {
                 setStroke(dp(3), Color.rgb(245, 32, 52))
             }
         }
-        content.addView(errorMark, LinearLayout.LayoutParams(dp(116), dp(116)).apply { bottomMargin = dp(26) })
+        content.addView(errorMark, LinearLayout.LayoutParams(dp(88), dp(88)).apply { bottomMargin = dp(14) })
         content.addView(TextView(this).apply {
             text = "Erro ao abrir o player"
-            textSize = 28f
+            textSize = 23f
             gravity = Gravity.CENTER
             setTextColor(Color.WHITE)
             setTypeface(typeface, android.graphics.Typeface.BOLD)
-        }, LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = dp(14) })
+        }, LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = dp(8) })
         content.addView(TextView(this).apply {
             text = "Não foi possível reproduzir este conteúdo.\nVerifique sua conexão com a internet e tente novamente."
-            textSize = 16f
+            textSize = 14f
             gravity = Gravity.CENTER
             setTextColor(Color.rgb(190, 190, 196))
             setLineSpacing(0f, 1.18f)
-        }, LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = dp(28) })
+        }, LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = dp(14) })
 
         val notice = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
-            setPadding(dp(22), dp(18), dp(22), dp(18))
+            setPadding(dp(16), dp(11), dp(16), dp(11))
             background = GradientDrawable().apply {
                 shape = GradientDrawable.RECTANGLE
                 cornerRadius = dp(18).toFloat()
@@ -1166,25 +1166,25 @@ class PlayerActivity : Activity() {
                 setStroke(dp(1), Color.rgb(48, 48, 52))
             }
         }
-        notice.minimumHeight = dp(132)
-        notice.addView(WifiErrorIconView(this), LinearLayout.LayoutParams(dp(86), dp(92)))
+        notice.minimumHeight = dp(94)
+        notice.addView(WifiErrorIconView(this), LinearLayout.LayoutParams(dp(62), dp(70)))
         notice.addView(LinearLayout(this@PlayerActivity).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(dp(14), 0, 0, 0)
+            setPadding(dp(12), 0, 0, 0)
             addView(TextView(this@PlayerActivity).apply {
                 text = "Falha de conexão"
-                textSize = 18f
+                textSize = 16f
                 setTextColor(Color.WHITE)
                 setTypeface(typeface, android.graphics.Typeface.BOLD)
             })
             addView(TextView(this@PlayerActivity).apply {
-                text = "Não foi possível conectar ao servidor.\nTente novamente mais tarde."
-                textSize = 15f
+                text = "Não foi possível conectar ao servidor.\nVerifique sua internet e tente novamente."
+                textSize = 13f
                 setTextColor(Color.rgb(175, 175, 182))
                 setLineSpacing(0f, 1.16f)
             })
         }, LinearLayout.LayoutParams(0, -2, 1f))
-        content.addView(notice, LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = dp(30) })
+        content.addView(notice, LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = dp(12) })
 
         val actions = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
@@ -1198,18 +1198,13 @@ class PlayerActivity : Activity() {
             }
         }
         val back = controlButton("Voltar", 14).apply { setOnClickListener { finish() } }
-        actions.addView(retry, LinearLayout.LayoutParams(0, dp(58), 1f))
-        actions.addView(back, LinearLayout.LayoutParams(0, dp(58), 1f))
-        content.addView(actions, LinearLayout.LayoutParams(-1, dp(64)))
-        val contentScroll = ScrollView(this).apply {
-            isFillViewport = true
-            overScrollMode = View.OVER_SCROLL_NEVER
-            addView(content, android.view.ViewGroup.LayoutParams(-1, -2))
-        }
-        root.addView(contentScroll, FrameLayout.LayoutParams(-1, -1).apply {
+        actions.addView(retry, LinearLayout.LayoutParams(0, dp(48), 1f))
+        actions.addView(back, LinearLayout.LayoutParams(0, dp(48), 1f))
+        content.addView(actions, LinearLayout.LayoutParams(-1, dp(52)))
+        root.addView(content, FrameLayout.LayoutParams(-1, -2).apply {
             gravity = Gravity.CENTER
-            topMargin = dp(8)
-            bottomMargin = dp(8)
+            topMargin = dp(4)
+            bottomMargin = dp(4)
         })
         setContentView(root)
     }
