@@ -354,10 +354,53 @@ object AuthSession {
     }
 
     fun verify(): Result<User> {
-        return authenticatedJson("GET", "/auth/verify").map { json ->
-            val user = parseUser(json.optJSONObject("user"))
-            if (user != null) saveLogin(token().orEmpty(), user)
-            user ?: cachedUser() ?: User()
+        val accessToken = token().orEmpty().trim()
+        if (accessToken.isBlank()) return Result(false, message = "Nenhum token salvo.", statusCode = 401)
+        return try {
+            val response = rawRequest("GET", "/validar/${Uri.encode(accessToken)}", null, includeBearer = false)
+            val json = parseObject(response.body)
+            val valid = response.statusCode in 200..299 && json.optBoolean("success", response.statusCode in 200..299)
+            if (!valid) {
+                clear()
+                Result(false, message = serverMessage(json, response.statusCode), statusCode = response.statusCode)
+            } else {
+                val user = User(username = json.optString("nome").ifBlank { cachedUser()?.username.orEmpty() })
+                saveLogin(accessToken, user)
+                Result(true, user, statusCode = response.statusCode)
+            }
+        } catch (error: Throwable) {
+            Result(false, message = friendlyNetworkError(error), statusCode = 0)
+        }
+    }
+
+    fun createTokenProfile(tokenValue: String, name: String, avatarSeed: String): Result<Profile> {
+        val cleanToken = tokenValue.trim().uppercase()
+        if (!Regex("^[A-Z0-9]{4}(-[A-Z0-9]{4}){4}$").matches(cleanToken)) {
+            return Result(false, message = "Digite um token válido no formato XXXX-XXXX-XXXX-XXXX-XXXX.")
+        }
+        return try {
+            val response = rawRequest("GET", "/validar/${Uri.encode(cleanToken)}", null, includeBearer = false)
+            val json = parseObject(response.body)
+            val valid = response.statusCode in 200..299 && json.optBoolean("success", response.statusCode in 200..299)
+            if (!valid) {
+                Result(false, message = serverMessage(json, response.statusCode), statusCode = response.statusCode)
+            } else {
+                val user = User(username = json.optString("nome").ifBlank { name.trim() })
+                val profile = StoredProfile(
+                    id = "profile-${java.util.UUID.randomUUID()}",
+                    name = name.trim().ifBlank { user.username.ifBlank { "Meu perfil" } },
+                    avatarSeed = avatarSeed.ifBlank { "tedflix-avatar-01" },
+                    avatarStyle = "fun-emoji",
+                    email = "",
+                    user = user,
+                    encryptedToken = encrypt(cleanToken),
+                )
+                saveStoredProfiles(readStoredProfiles() + profile, profile.id)
+                saveLogin(cleanToken, user)
+                Result(true, profile.toPublic(), statusCode = response.statusCode)
+            }
+        } catch (error: Throwable) {
+            Result(false, message = friendlyNetworkError(error), statusCode = 0)
         }
     }
 
@@ -599,19 +642,8 @@ object AuthSession {
     )
 
     fun logout(): Result<JSONObject> {
-        return try {
-            val response = rawRequest("POST", "/auth/logout", null, includeBearer = true)
-            clear()
-            val json = parseObject(response.body)
-            if (response.statusCode in 200..299 || response.statusCode == 401) {
-                Result(true, json, statusCode = response.statusCode)
-            } else {
-                Result(false, message = serverMessage(json, response.statusCode), statusCode = response.statusCode)
-            }
-        } catch (error: Throwable) {
-            clear()
-            Result(true, message = "Sessão removida localmente.")
-        }
+        clear()
+        return Result(true, JSONObject().put("success", true), statusCode = 200)
     }
 
     /** Proxy para fetch GET da WebView. O bearer fica fora do JavaScript. */
@@ -620,8 +652,9 @@ object AuthSession {
         if (uri.host != MOVIE_API_HOST || !uri.path.orEmpty().startsWith("/api/")) return null
         if (!hasToken()) return null
         val path = uri.encodedPath.orEmpty() + uri.encodedQuery.orEmpty().let { if (it.isBlank()) "" else "?$it" }
+        val protectedPath = path.substringBefore('?') in setOf("/api/favorites/list", "/api/favorites/toggle", "/api/history/save-progress", "/api/history/continue-watching")
         return try {
-            rawRequest(request.method.ifBlank { "GET" }, path, null, includeBearer = true)
+            rawRequest(request.method.ifBlank { "GET" }, path, null, includeBearer = protectedPath)
         } catch (error: Throwable) {
             RawResponse(599, JSONObject().put("error", friendlyNetworkError(error)).toString(), "application/json")
         }
@@ -695,7 +728,7 @@ object AuthSession {
                 setRequestProperty("Content-Type", "application/json; charset=utf-8")
             }
             if (includeBearer) {
-                token()?.takeIf { it.isNotBlank() }?.let { setRequestProperty("Authorization", "Bearer $it") }
+                token()?.takeIf { it.isNotBlank() }?.let { setRequestProperty("x-access-token", it) }
             }
         }
         return try {

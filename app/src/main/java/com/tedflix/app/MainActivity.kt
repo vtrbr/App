@@ -979,8 +979,8 @@ class MainActivity : Activity() {
         @JavascriptInterface
         fun createProfileFromSettings(code: String?, email: String?, password: String?, name: String?, avatarSeed: String?): String {
             return try {
-                val result = AuthSession.createProfile(
-                    code.orEmpty(), email.orEmpty(), password.orEmpty(), name.orEmpty(), avatarSeed.orEmpty(),
+                val result = AuthSession.createTokenProfile(
+                    code.orEmpty(), name.orEmpty(), avatarSeed.orEmpty(),
                 )
                 org.json.JSONObject().apply {
                     put("success", result.ok)

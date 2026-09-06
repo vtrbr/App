@@ -4,8 +4,8 @@ import { medir, lerCache, nivel, ROTULO } from "../net.js";
 
 const AVATAR_SEEDS = Array.from({ length: 15 }, (_, index) => `tedflix-avatar-${String(index + 1).padStart(2, "0")}`);
 const DEFAULT_SEED = AVATAR_SEEDS[0];
-const APP_VERSION = "1.28.12";
-const APP_COMMIT_COUNT = 51;
+const APP_VERSION = "1.28.13";
+const APP_COMMIT_COUNT = 52;
 
 function avatarUrl(seed, size = 256) {
   return `https://api.dicebear.com/10.x/fun-emoji/png?seed=${encodeURIComponent(seed || DEFAULT_SEED)}&size=${size}`;
@@ -518,19 +518,17 @@ export default async function paginaConfiguracoes(raiz) {
     const editor = el("section", { class: "cfg-profile-editor cfg-add-editor" });
     const preview = el("div", { class: "cfg-editor-preview" }, [imgAvatar({ avatarSeed: state.draftAvatar, name: "Novo perfil" }, "cfg-editor-avatar", 320), el("span", { class: "cfg-editor-camera" }, [icon("camera")])]);
     const nameInput = el("input", { class: "input cfg-field", type: "text", placeholder: "Nome do perfil", maxlength: "40", value: draft.name || "" });
-    const codeInput = el("input", { class: "input cfg-field", type: "text", placeholder: "Token ou código de acesso", value: draft.code || "" });
-    const emailInput = el("input", { class: "input cfg-field", type: "email", placeholder: "E-mail", autocomplete: "email", value: draft.email || "" });
-    const passwordInput = el("input", { class: "input cfg-field", type: "password", placeholder: "Senha", autocomplete: "new-password", value: draft.password || "" });
-    const draftAtual = () => ({ name: nameInput.value, code: codeInput.value, email: emailInput.value, password: passwordInput.value, avatar: state.draftAvatar });
+    const codeInput = el("input", { class: "input cfg-field", type: "text", placeholder: "XXXX-XXXX-XXXX-XXXX-XXXX", value: draft.code || "", maxlength: "24" });
+    const draftAtual = () => ({ name: nameInput.value, code: codeInput.value, avatar: state.draftAvatar });
     const abrirAvatar = () => renderAvatarPicker(state.draftAvatar, (seed) => renderAddProfile({ ...draftAtual(), avatar: seed }), () => renderAddProfile(draftAtual()));
     const avatarButton = button("Escolher avatar", "cfg-wide-button", abrirAvatar);
     preview.addEventListener("click", abrirAvatar);
-    editor.append(preview, el("label", { class: "cfg-field-label" }, "Nome do perfil"), nameInput, el("label", { class: "cfg-field-label" }, "Credenciais"), codeInput, emailInput, passwordInput, avatarButton, button("Validar e adicionar", "cfg-save-button", () => {
-      if (!nameInput.value.trim() || !codeInput.value.trim() || !emailInput.value.trim() || !passwordInput.value) {
-        toast("Preencha nome, código, e-mail e senha.", "error");
+    editor.append(preview, el("label", { class: "cfg-field-label" }, "Nome do perfil"), nameInput, el("label", { class: "cfg-field-label" }, "Token de acesso"), codeInput, avatarButton, button("Validar e adicionar", "cfg-save-button", () => {
+      if (!nameInput.value.trim() || !codeInput.value.trim()) {
+        toast("Preencha o nome e o token de acesso.", "error");
         return;
       }
-      const resposta = respostaAndroid("createProfileFromSettings", codeInput.value.trim(), emailInput.value.trim(), passwordInput.value, nameInput.value.trim(), state.draftAvatar);
+      const resposta = respostaAndroid("createProfileFromSettings", codeInput.value.trim(), "", "", nameInput.value.trim(), state.draftAvatar);
       if (!resposta.success) {
         toast(resposta.error || "Não foi possível adicionar o perfil.", "error");
         return;
