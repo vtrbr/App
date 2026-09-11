@@ -11,8 +11,8 @@ android {
         applicationId = "com.tedflix.app"
         minSdk = 24
         targetSdk = 35
-        versionCode = 53
-        versionName = "1.28.14"
+        versionCode = 54
+        versionName = "1.28.15"
     }
 
     buildTypes {

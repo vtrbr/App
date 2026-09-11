@@ -44,7 +44,8 @@ img { display: block; max-width: 100%; }
 .topbar {
   position: sticky; top: 0; z-index: 40;
   display: flex; align-items: center; justify-content: space-between;
-  gap: 12px; width: 100%; min-width: 0; padding: 12px 16px;
+  gap: 12px; width: 100%; min-width: 0;
+  padding: max(12px, env(safe-area-inset-top)) 16px 10px;
   overflow: hidden;
   background: color-mix(in oklab, var(--background) 80%, transparent);
   backdrop-filter: blur(14px);
@@ -670,7 +671,7 @@ body.imersivo .topbar, body.imersivo .tabbar { display: none; }
 @keyframes cfg-toast-in { from { opacity: 0; transform: translate(-50%, 10px); } to { opacity: 1; transform: translate(-50%, 0); } }
 @media (max-width: 380px) {
   html, body, #app, .app, .page { max-width: 100%; overflow-x: hidden; }
-  .topbar { gap: 6px; padding-inline: 10px; }
+  .topbar { gap: 6px; padding-inline: 10px; padding-bottom: 9px; }
   .brand { width: min(132px, 38vw); height: 32px; }
   .topbar-acoes { gap: 6px; }
   .icon-btn { width: 36px; height: 36px; }

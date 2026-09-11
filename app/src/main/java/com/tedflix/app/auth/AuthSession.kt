@@ -375,8 +375,8 @@ object AuthSession {
 
     fun createTokenProfile(tokenValue: String, name: String, avatarSeed: String): Result<Profile> {
         val cleanToken = tokenValue.trim().uppercase()
-        if (!Regex("^[A-Z0-9]{5}(-[A-Z0-9]{5}){4}$").matches(cleanToken)) {
-            return Result(false, message = "Digite um token válido no formato A1B2C-3D4E5-F6G7H-8I9J0-K1L2M.")
+        if (cleanToken.isBlank()) {
+            return Result(false, message = "Digite o código de acesso.")
         }
         return try {
             val response = rawRequest("GET", "/validar/${Uri.encode(cleanToken)}", null, includeBearer = false)

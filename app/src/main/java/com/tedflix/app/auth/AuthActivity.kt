@@ -161,9 +161,7 @@ class AuthActivity : Activity() {
             gravity = Gravity.CENTER
         }, LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = dp(22) })
         val name = field("Nome do perfil", "Ex.: João", InputType.TYPE_CLASS_TEXT)
-        val token = field("Token de acesso", "A1B2C-3D4E5-F6G7H-8I9J0-K1L2M", InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_CAP_CHARACTERS).apply {
-            filters = arrayOf(InputFilter.LengthFilter(29))
-        }
+        val token = field("Token de acesso", "Digite o código recebido", InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_CAP_CHARACTERS)
         box.addView(name, fieldParams())
         box.addView(token, fieldParams())
         val enter = Button(this).apply {
@@ -194,9 +192,7 @@ class AuthActivity : Activity() {
         val cleanName = name.trim()
         val cleanToken = rawToken.trim().uppercase(Locale.ROOT)
         if (cleanName.isBlank()) return showMessage("Informe um nome para o perfil.", false)
-        if (!Regex("^[A-Z0-9]{5}(-[A-Z0-9]{5}){4}$").matches(cleanToken)) {
-            return showMessage("Digite um token no formato A1B2C-3D4E5-F6G7H-8I9J0-K1L2M.", false)
-        }
+        if (cleanToken.isBlank()) return showMessage("Digite o código de acesso.", false)
         loading = true
         Thread {
             val result = AuthSession.createTokenProfile(cleanToken, cleanName, "tedflix-avatar-${System.currentTimeMillis()}")
