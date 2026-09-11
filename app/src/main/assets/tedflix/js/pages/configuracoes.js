@@ -4,8 +4,8 @@ import { medir, lerCache, nivel, ROTULO } from "../net.js";
 
 const AVATAR_SEEDS = Array.from({ length: 15 }, (_, index) => `tedflix-avatar-${String(index + 1).padStart(2, "0")}`);
 const DEFAULT_SEED = AVATAR_SEEDS[0];
-const APP_VERSION = "1.28.13";
-const APP_COMMIT_COUNT = 52;
+const APP_VERSION = "1.28.14";
+const APP_COMMIT_COUNT = 53;
 
 function avatarUrl(seed, size = 256) {
   return `https://api.dicebear.com/10.x/fun-emoji/png?seed=${encodeURIComponent(seed || DEFAULT_SEED)}&size=${size}`;
@@ -518,7 +518,7 @@ export default async function paginaConfiguracoes(raiz) {
     const editor = el("section", { class: "cfg-profile-editor cfg-add-editor" });
     const preview = el("div", { class: "cfg-editor-preview" }, [imgAvatar({ avatarSeed: state.draftAvatar, name: "Novo perfil" }, "cfg-editor-avatar", 320), el("span", { class: "cfg-editor-camera" }, [icon("camera")])]);
     const nameInput = el("input", { class: "input cfg-field", type: "text", placeholder: "Nome do perfil", maxlength: "40", value: draft.name || "" });
-    const codeInput = el("input", { class: "input cfg-field", type: "text", placeholder: "XXXX-XXXX-XXXX-XXXX-XXXX", value: draft.code || "", maxlength: "24" });
+    const codeInput = el("input", { class: "input cfg-field", type: "text", placeholder: "A1B2C-3D4E5-F6G7H-8I9J0-K1L2M", value: draft.code || "", maxlength: "29" });
     const draftAtual = () => ({ name: nameInput.value, code: codeInput.value, avatar: state.draftAvatar });
     const abrirAvatar = () => renderAvatarPicker(state.draftAvatar, (seed) => renderAddProfile({ ...draftAtual(), avatar: seed }), () => renderAddProfile(draftAtual()));
     const avatarButton = button("Escolher avatar", "cfg-wide-button", abrirAvatar);

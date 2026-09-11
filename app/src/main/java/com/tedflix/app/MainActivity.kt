@@ -79,10 +79,6 @@ class MainActivity : Activity() {
         // O token corrente pode ter sido perdido sem que os perfis locais tenham
         // sido removidos. Restaure o perfil ativo antes de abrir o seletor/WebView.
         AuthSession.restoreActiveProfileIfNeeded()
-        if (!AuthSession.hasToken()) {
-            openLogin()
-            return
-        }
 
         NotificationHelper.createChannel(this)
         requestNotificationPermissionIfNeeded(this)
@@ -92,7 +88,11 @@ class MainActivity : Activity() {
             showCrashRecovery(previousCrash)
             return
         }
-        showProfileChooser()
+        if (AuthSession.hasToken()) {
+            showProfileChooser()
+        } else {
+            setupWebView()
+        }
     }
 
     private fun refreshHeaderBadges(showSystemNotifications: Boolean = false) {
@@ -721,7 +721,7 @@ class MainActivity : Activity() {
         fun openFavorites() {
             activity.runOnUiThread {
                 if (!AuthSession.hasToken()) {
-                    activity.startActivity(Intent(activity, AuthActivity::class.java))
+                    Toast.makeText(activity, "Adicione um perfil nas configurações para usar favoritos.", Toast.LENGTH_LONG).show()
                     return@runOnUiThread
                 }
                 try {
