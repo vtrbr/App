@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, minimum-scale=1, user-scalable=no, viewport-fit=cover" />
+<title>TEDFLIX — Filmes e séries online</title>
+<meta name="description" content="Assista filmes e séries online no TEDFLIX: catálogo completo, lançamentos, agenda de episódios e player rápido." />
+<meta property="og:title" content="TEDFLIX — Filmes e séries online" />
+<meta property="og:description" content="Catálogo completo de filmes e séries, lançamentos e agenda de episódios." />
+<meta property="og:type" content="website" />
+<meta name="twitter:card" content="summary_large_image" />
+<meta name="theme-color" content="#0a0a0c" />
+<link rel="icon" href="assets/logo/logo.png" />
+
+<link rel="preconnect" href="https://image.tmdb.org" crossorigin />
+<link rel="preconnect" href="https://novelasflix.video" crossorigin />
+<link rel="preconnect" href="https://servidores-ted-auth-1.onrender.com" crossorigin />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Oswald:wght@500;600;700&family=Manrope:wght@400;500;700;800&display=swap" />
+<!-- Player nativo (js/components/player.js): motor hls.js carregado sob demanda direto de cdn.jsdelivr.net -->
+<link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin />
+
+<link rel="stylesheet" href="css/style.css?v=20260825-1" />
+</head>
+<body>
+  <header class="topbar" id="topbar">
+    <a class="brand" href="#/" aria-label="TEDFLIX">
+      <img src="assets/logo/logo.png" alt="TEDFLIX" />
+    </a>
+    <div class="topbar-acoes">
+      <a class="icon-btn" href="#/busca" aria-label="Buscar">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.2-3.2"/></svg>
+      </a>
+      <button class="icon-btn" type="button" aria-label="Favoritos" title="Favoritos" onclick="window.AndroidPlayer?.openFavorites?.()">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m12 20-1.4-1.3C5.6 14.2 2 10.9 2 6.9A4.9 4.9 0 0 1 6.9 2c1.9 0 3.7.9 5.1 2.4A6.7 6.7 0 0 1 17.1 2 4.9 4.9 0 0 1 22 6.9c0 4-3.6 7.3-8.6 11.8L12 20Z"/></svg>
+        <span id="fav-badge" class="topbar-badge" aria-hidden="true"></span>
+      </button>
+      <a class="icon-btn" href="#/config" aria-label="Configurações">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3.2"/><path d="M19.4 13.5a7.7 7.7 0 0 0 0-3l1.8-1.4-2-3.4-2.1.9a7.7 7.7 0 0 0-2.6-1.5L14.2 2h-4l-.3 2.3a7.7 7.7 0 0 0-2.6 1.5l-2.1-.9-2 3.4 1.8 1.4a7.7 7.7 0 0 0 0 3L3.2 14.9l2 3.4 2.1-.9a7.7 7.7 0 0 0 2.6 1.5l.3 2.3h4l.3-2.3a7.7 7.7 0 0 0 2.6-1.5l2.1.9 2-3.4z"/></svg>
+      </a>
+    </div>
+
+  </header>
+
+  <main id="app" class="app"></main>
+
+  <nav class="tabbar" id="tabbar"></nav>
+
+  <script src="js/browser.js?v=20261003-1"></script>
+  <script type="module" src="js/app.js?v=20261003-1"></script>
+</body>
+</html>
