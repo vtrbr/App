@@ -20,20 +20,21 @@ import android.webkit.WebResourceRequest
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import android.widget.Button
+import android.widget.ArrayAdapter
+import android.widget.AdapterView
 import android.widget.EditText
 import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.ProgressBar
 import android.widget.ScrollView
+import android.widget.Spinner
+import android.widget.Switch
 import android.widget.TextView
 import android.widget.Toast
 import androidx.media3.common.util.UnstableApi
 import com.tedflix.app.auth.AuthActivity
 import com.tedflix.app.auth.AuthSession
 import com.tedflix.app.auth.FavoritesActivity
-import com.tedflix.app.auth.NotificationActivity
-import com.tedflix.app.NotificationHelper
-import com.tedflix.app.requestNotificationPermissionIfNeeded
 import java.net.HttpURLConnection
 import java.net.URL
 
@@ -59,6 +60,8 @@ class MainActivity : Activity() {
         val name: String,
         val avatarSeed: String,
         val avatarStyle: String = "fun-emoji",
+        val username: String = "",
+        val isKids: Boolean = false,
     )
 
     private lateinit var webView: WebView
@@ -67,7 +70,7 @@ class MainActivity : Activity() {
     @Volatile private var historyRefreshInFlight = false
     @Volatile private var remoteHistoryProfileId = ""
     @Volatile private var remoteHistoryCache: List<AuthSession.HistoryItem> = emptyList()
-    @Volatile private var unreadNotificationCount = 0
+    @Volatile private var favoriteCache: List<AuthSession.Favorite> = emptyList()
     @Volatile private var favoriteCount = 0
 
     @SuppressLint("SetJavaScriptEnabled")
@@ -80,39 +83,61 @@ class MainActivity : Activity() {
         // sido removidos. Restaure o perfil ativo antes de abrir o seletor/WebView.
         AuthSession.restoreActiveProfileIfNeeded()
 
-        NotificationHelper.createChannel(this)
-        requestNotificationPermissionIfNeeded(this)
-        refreshHeaderBadges(showSystemNotifications = true)
         val previousCrash = TedflixApplication.consumeLastCrash(this)
         if (!previousCrash.isNullOrBlank()) {
             showCrashRecovery(previousCrash)
             return
         }
         if (AuthSession.hasToken()) {
-            showProfileChooser()
+            Thread {
+                val profilesResult = AuthSession.refreshProfiles()
+                runOnUiThread {
+                    if (profilesResult.statusCode == 401 || !AuthSession.hasToken()) {
+                        AuthSession.clear()
+                        startActivity(Intent(this, AuthActivity::class.java))
+                        finish()
+                    } else if (profilesResult.ok) {
+                        showProfileChooser()
+                    } else {
+                        showProfileLoadError(profilesResult.message.ifBlank { "Não foi possível carregar os perfis." })
+                    }
+                }
+            }.apply { name = "TedflixLoadRemoteProfiles"; start() }
         } else {
-            setupWebView()
+            startActivity(Intent(this, AuthActivity::class.java))
+            finish()
         }
     }
 
-    private fun refreshHeaderBadges(showSystemNotifications: Boolean = false) {
-        Thread {
-            val notifications = AuthSession.notifications()
-            val favorites = AuthSession.listFavorites()
-            unreadNotificationCount = if (notifications.ok) notifications.value.orEmpty().count { !it.read } else 0
-            favoriteCount = if (favorites.ok) favorites.value.orEmpty().size else 0
-            if (showSystemNotifications && notifications.ok) {
-                notifications.value.orEmpty().filterNot { it.read }.forEachIndexed { index, item ->
-                    runOnUiThread { NotificationHelper.show(this, 5000 + index, item.title, item.body) }
-                }
+    private fun showProfileLoadError(message: String) {
+        AlertDialog.Builder(this, R.style.TedflixDialog)
+            .setTitle("Não foi possível carregar os perfis")
+            .setMessage(message)
+            .setNegativeButton("Sair") { _, _ ->
+                AuthSession.clear()
+                startActivity(Intent(this, AuthActivity::class.java))
+                finish()
             }
+            .setPositiveButton("Tentar novamente") { _, _ -> recreate() }
+            .setCancelable(false)
+            .show()
+    }
+
+    private fun refreshHeaderBadges() {
+        // A tela de seleção ainda não possui perfil ativo; não consulte
+        // /profiles/:id/favorites nesse momento, pois isso gera o falso aviso
+        // de conexão mostrado sobre o seletor de perfis.
+        if (!AuthSession.hasToken() || AuthSession.activeProfileId().isBlank()) return
+        Thread {
+            val favorites = AuthSession.listFavorites()
+            if (favorites.ok) favoriteCache = favorites.value.orEmpty()
+            favoriteCount = favoriteCache.size
             publishBadgeCounts()
         }.apply { name = "TedflixHeaderBadges"; start() }
     }
 
     private fun publishBadgeCounts() {
         if (!::webView.isInitialized || isFinishing || isDestroyed) return
-        val unread = unreadNotificationCount.coerceAtLeast(0)
         val favorites = favoriteCount.coerceAtLeast(0)
         webView.post {
             if (isFinishing || isDestroyed) return@post
@@ -126,7 +151,6 @@ class MainActivity : Activity() {
                         badge.classList.toggle('visible', count > 0);
                         badge.setAttribute('aria-hidden', count > 0 ? 'false' : 'true');
                     };
-                    applyBadge('notif-badge', $unread);
                     applyBadge('fav-badge', $favorites);
                 })();""".trimIndent(),
                 null,
@@ -192,7 +216,7 @@ class MainActivity : Activity() {
         }
         content.addView(grid, LinearLayout.LayoutParams(-1, -2))
         content.addView(TextView(this).apply {
-            text = "＋\nAdicionar perfil"
+            text = if (profiles.isEmpty()) "Nenhum perfil encontrado\n＋ Criar perfil" else "＋\nAdicionar perfil"
             textSize = 16f
             setTextColor(Color.LTGRAY)
             gravity = Gravity.CENTER
@@ -245,29 +269,35 @@ class MainActivity : Activity() {
             gravity = Gravity.CENTER; maxLines = 1; ellipsize = android.text.TextUtils.TruncateAt.END
             if (selected) typeface = android.graphics.Typeface.DEFAULT_BOLD
         }, LinearLayout.LayoutParams(-1, dp(28)))
-        loadDiceBearAvatar(avatar, profile.avatarSeed)
+        loadDiceBearAvatar(avatar, profile.avatarSeed, profile.avatarStyle)
         return cell
     }
 
     private fun selectProfileAndOpen(root: android.widget.FrameLayout, content: LinearLayout, shade: View, profile: LocalProfile) {
-        val activated = AuthSession.activateProfile(profile.id)
-        if (!activated.ok) {
-            Toast.makeText(this, activated.message.ifBlank { "Não foi possível selecionar este perfil." }, Toast.LENGTH_LONG).show()
-            return
-        }
-        refreshHeaderBadges()
-        getSharedPreferences(PROFILE_PREFS, Context.MODE_PRIVATE).edit().putString("selected_profile_id", profile.id).apply()
-        content.visibility = View.GONE; shade.alpha = 0.98f
-        val loader = TedflixLoading.create(this@MainActivity)
-        root.addView(loader, android.widget.FrameLayout.LayoutParams(-1, -1))
-        root.postDelayed({ setupWebView() }, 320L)
+        content.alpha = 0.65f
+        Thread {
+            val activated = AuthSession.activateProfile(profile.id)
+            runOnUiThread {
+                content.alpha = 1f
+                if (!activated.ok) {
+                    Toast.makeText(this, activated.message.ifBlank { "Não foi possível selecionar este perfil." }, Toast.LENGTH_LONG).show()
+                    return@runOnUiThread
+                }
+                refreshHeaderBadges()
+                getSharedPreferences(PROFILE_PREFS, Context.MODE_PRIVATE).edit().putString("selected_profile_id", profile.id).apply()
+                content.visibility = View.GONE; shade.alpha = 0.98f
+                val loader = TedflixLoading.create(this@MainActivity)
+                root.addView(loader, android.widget.FrameLayout.LayoutParams(-1, -1))
+                root.postDelayed({ setupWebView() }, 320L)
+            }
+        }.apply { name = "TedflixSelectProfile"; start() }
     }
 
     private fun loadProfiles(): MutableList<LocalProfile> {
         val accountName = AuthSession.cachedUser()?.username.orEmpty()
         AuthSession.ensureCurrentProfile(accountName, DEFAULT_AVATAR_SEEDS.first())
         return AuthSession.profiles().map { profile ->
-            LocalProfile(profile.id, profile.name, profile.avatarSeed, profile.avatarStyle)
+            LocalProfile(profile.id, profile.name, profile.avatarSeed, profile.avatarStyle, profile.username, profile.isKids)
         }.toMutableList()
     }
 
@@ -275,13 +305,15 @@ class MainActivity : Activity() {
         AuthSession.updateProfile(profile.id, name, avatarSeed)
     }
 
-    private fun avatarUrl(seed: String): String = "https://api.dicebear.com/10.x/fun-emoji/png?seed=${Uri.encode(seed)}&size=256"
+    private fun avatarUrl(seed: String, style: String = "fun-emoji"): String = "https://api.dicebear.com/10.x/${Uri.encode(style)}/png?seed=${Uri.encode(seed)}&size=256"
 
-    private fun loadDiceBearAvatar(image: ImageView, seed: String) {
+    private fun loadDiceBearAvatar(image: ImageView, seed: String, style: String = "fun-emoji") {
         Thread {
             try {
-                val connection = URL(avatarUrl(seed)).openConnection() as HttpURLConnection
+                val connection = URL(avatarUrl(seed, style)).openConnection() as HttpURLConnection
                 connection.connectTimeout = 8_000; connection.readTimeout = 8_000; connection.instanceFollowRedirects = true
+                connection.setRequestProperty("User-Agent", "Mozilla/5.0 (Linux; Android) Tedflix/1.0")
+                connection.setRequestProperty("Accept", "image/avif,image/webp,image/apng,image/*,*/*;q=0.8")
                 val bitmap = if (connection.responseCode in 200..299) {
                     connection.inputStream.use { BitmapFactory.decodeStream(it) }
                 } else null
@@ -294,6 +326,7 @@ class MainActivity : Activity() {
     private fun showAddProfileDialog() {
         val panel = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(dp(24), dp(8), dp(24), 0) }
         val selectedSeed = arrayOf(DEFAULT_AVATAR_SEEDS[loadProfiles().size % DEFAULT_AVATAR_SEEDS.size])
+        val selectedStyle = arrayOf("fun-emoji")
         val preview = ImageView(this).apply {
             tag = selectedSeed[0]
             scaleType = ImageView.ScaleType.FIT_CENTER
@@ -310,34 +343,28 @@ class MainActivity : Activity() {
         loadDiceBearAvatar(preview, selectedSeed[0])
         panel.addView(Button(this).apply {
             text = "Escolher outro avatar"; setAllCaps(false)
-            setOnClickListener { showAvatarPicker(selectedSeed[0]) { seed -> selectedSeed[0] = seed; loadDiceBearAvatar(preview, seed) } }
+            setOnClickListener { showAvatarPicker(selectedSeed[0]) { seed -> selectedSeed[0] = seed; loadDiceBearAvatar(preview, seed, selectedStyle[0]) } }
         }, LinearLayout.LayoutParams(-1, dp(46)))
         val nameInput = EditText(this).apply { hint = "Nome do perfil"; setSingleLine(true) }
         panel.addView(nameInput, LinearLayout.LayoutParams(-1, dp(54)).apply { topMargin = dp(8) })
-        val codeInput = EditText(this).apply { hint = "Token ou código de acesso"; setSingleLine(true) }
-        panel.addView(codeInput, LinearLayout.LayoutParams(-1, dp(54)))
-        val emailInput = EditText(this).apply { hint = "E-mail"; setSingleLine(true); inputType = android.text.InputType.TYPE_CLASS_TEXT or android.text.InputType.TYPE_TEXT_VARIATION_EMAIL_ADDRESS }
-        panel.addView(emailInput, LinearLayout.LayoutParams(-1, dp(54)))
-        val passwordInput = EditText(this).apply { hint = "Senha"; setSingleLine(true); inputType = android.text.InputType.TYPE_CLASS_TEXT or android.text.InputType.TYPE_TEXT_VARIATION_PASSWORD }
-        panel.addView(passwordInput, LinearLayout.LayoutParams(-1, dp(54)))
-        val dialog = AlertDialog.Builder(this, R.style.TedflixDialog).setTitle("Adicionar perfil").setView(ScrollView(this).apply { addView(panel) }).setNegativeButton("Cancelar", null).setPositiveButton("Validar e adicionar", null).create()
+        val usernameInput = EditText(this).apply { hint = "Username (opcional)"; setSingleLine(true) }
+        panel.addView(usernameInput, LinearLayout.LayoutParams(-1, dp(54)))
+        val styleSpinner = Spinner(this).apply { adapter = ArrayAdapter(this@MainActivity, android.R.layout.simple_spinner_dropdown_item, listOf("fun-emoji", "clay", "adventurer-neutral")); onItemSelectedListener = object : AdapterView.OnItemSelectedListener { override fun onNothingSelected(parent: AdapterView<*>?) = Unit; override fun onItemSelected(parent: AdapterView<*>?, view: View?, position: Int, id: Long) { selectedStyle[0] = parent?.getItemAtPosition(position)?.toString().orEmpty().ifBlank { "fun-emoji" }; loadDiceBearAvatar(preview, selectedSeed[0], selectedStyle[0]) } } }
+        panel.addView(styleSpinner, LinearLayout.LayoutParams(-1, dp(52)))
+        val kidsSwitch = Switch(this).apply { text = "Perfil infantil"; setTextColor(Color.WHITE); isChecked = false }
+        panel.addView(kidsSwitch, LinearLayout.LayoutParams(-1, dp(52)))
+        val dialog = AlertDialog.Builder(this, R.style.TedflixDialog).setTitle("Criar perfil").setView(ScrollView(this).apply { addView(panel) }).setNegativeButton("Cancelar", null).setPositiveButton("Criar perfil", null).create()
         dialog.setOnShowListener {
             dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {
                 val name = nameInput.text.toString().trim()
-                val code = codeInput.text.toString().trim()
-                val email = emailInput.text.toString().trim()
-                val password = passwordInput.text.toString()
                 when {
                     name.isBlank() -> nameInput.error = "Informe um nome"
-                    code.isBlank() -> codeInput.error = "Informe o token/código"
-                    email.isBlank() -> emailInput.error = "Informe o e-mail"
-                    password.isBlank() -> passwordInput.error = "Informe a senha"
                     else -> {
                         val action = dialog.getButton(AlertDialog.BUTTON_POSITIVE)
                         action.isEnabled = false
-                        action.text = "Validando..."
+                        action.text = "Criando..."
                         Thread {
-                            val result = AuthSession.createProfile(code, email, password, name, selectedSeed[0])
+                            val result = AuthSession.createRemoteProfile(name, kidsSwitch.isChecked, selectedStyle[0], selectedSeed[0], usernameInput.text.toString().trim())
                             runOnUiThread {
                                 if (result.ok) {
                                     dialog.dismiss()
@@ -346,7 +373,7 @@ class MainActivity : Activity() {
                                 } else {
                                     action.isEnabled = true
                                     action.text = "Validar e adicionar"
-                                    Toast.makeText(this, result.message.ifBlank { "Não foi possível validar a conta." }, Toast.LENGTH_LONG).show()
+                                    Toast.makeText(this, result.message.ifBlank { "Não foi possível criar o perfil." }, Toast.LENGTH_LONG).show()
                                 }
                             }
                         }.apply { this.name = "TedflixCreateProfile"; start() }
@@ -409,11 +436,21 @@ class MainActivity : Activity() {
     }
 
     private fun showEditProfileDialog(profile: LocalProfile) {
-        val input = EditText(this).apply { setSingleLine(true); setText(profile.name); hint = "Nome do perfil" }
-        AlertDialog.Builder(this, R.style.TedflixDialog).setTitle("Editar perfil").setView(input).setNegativeButton("Cancelar", null).setPositiveButton("Salvar") { _, _ ->
-            val name = input.text.toString().trim().ifBlank { profile.name }
-            updateProfile(profile, name = name)
-            showManageProfilesDialog()
+        val panel = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(dp(22), 0, dp(22), 0) }
+        val nameInput = EditText(this).apply { setSingleLine(true); setText(profile.name); hint = "Nome do perfil" }
+        val usernameInput = EditText(this).apply { setSingleLine(true); setText(profile.username); hint = "Username (opcional)" }
+        val styleSpinner = Spinner(this).apply { adapter = ArrayAdapter(this@MainActivity, android.R.layout.simple_spinner_dropdown_item, listOf("fun-emoji", "clay", "adventurer-neutral")); setSelection(listOf("fun-emoji", "clay", "adventurer-neutral").indexOf(profile.avatarStyle).coerceAtLeast(0)) }
+        val kidsSwitch = Switch(this).apply { text = "Perfil infantil"; setTextColor(Color.WHITE); isChecked = profile.isKids }
+        panel.addView(nameInput, LinearLayout.LayoutParams(-1, dp(54)))
+        panel.addView(usernameInput, LinearLayout.LayoutParams(-1, dp(54)))
+        panel.addView(styleSpinner, LinearLayout.LayoutParams(-1, dp(52)))
+        panel.addView(kidsSwitch, LinearLayout.LayoutParams(-1, dp(52)))
+        AlertDialog.Builder(this, R.style.TedflixDialog).setTitle("Editar perfil").setView(panel).setNegativeButton("Cancelar", null).setPositiveButton("Salvar") { _, _ ->
+            val name = nameInput.text.toString().trim().ifBlank { profile.name }
+            val style = styleSpinner.selectedItem?.toString().orEmpty().ifBlank { profile.avatarStyle }
+            val result = AuthSession.updateProfileFull(profile.id, name, usernameInput.text.toString().trim(), style, profile.avatarSeed, kidsSwitch.isChecked)
+            if (!result.ok) Toast.makeText(this, result.message.ifBlank { "Não foi possível atualizar o perfil." }, Toast.LENGTH_LONG).show()
+            showProfileChooser()
         }.setNeutralButton("Alterar avatar") { _, _ -> showAvatarPicker(profile.avatarSeed) { seed ->
             updateProfile(profile, avatarSeed = seed)
             showProfileChooser()
@@ -450,6 +487,7 @@ class MainActivity : Activity() {
             settings.javaScriptEnabled = true
             settings.domStorageEnabled = true
             settings.databaseEnabled = true
+            settings.blockNetworkImage = false
             // A interface é de aplicativo: não permitir pinch-to-zoom nem
             // os controles de escala do WebView.
             @Suppress("DEPRECATION")
@@ -479,6 +517,11 @@ class MainActivity : Activity() {
                 }
 
                 override fun shouldInterceptRequest(view: WebView, request: WebResourceRequest): android.webkit.WebResourceResponse? {
+                    // WebView/Android falha de forma seletiva ao buscar alguns
+                    // WebP longos do CDN. Baixar pelo Android com User-Agent e
+                    // Referer corretos elimina capas quebradas sem alterar a API.
+                    val image = AuthSession.proxyExternalImageRequest(request)
+                    if (image != null) return image
                     val response = AuthSession.proxyMovieRequest(request)
                     // Não transformar uma falha de autorização do servidor de filmes
                     // em logout automático. O token pode continuar válido no auth;
@@ -669,53 +712,7 @@ class MainActivity : Activity() {
         }
 
         @JavascriptInterface
-        fun openLivePlayer(
-            channelId: String?,
-            title: String?,
-            logo: String?,
-            serversJson: String?,
-            program: String?,
-            category: String?,
-        ) {
-            val id = channelId.orEmpty().trim()
-            val name = title.orEmpty().trim().ifBlank { "Canal ao vivo" }
-            val servers = serversJson.orEmpty().trim()
-            activity.runOnUiThread {
-                if (id.isBlank() || servers.isBlank()) {
-                    Toast.makeText(activity, "Canal sem servidor disponível.", Toast.LENGTH_LONG).show()
-                    return@runOnUiThread
-                }
-                try {
-                    val intent = Intent(activity, LivePlayerActivity::class.java).apply {
-                        putExtra(LivePlayerActivity.EXTRA_CHANNEL_ID, id)
-                        putExtra(LivePlayerActivity.EXTRA_TITLE, name)
-                        putExtra(LivePlayerActivity.EXTRA_LOGO, logo.orEmpty().trim())
-                        putExtra(LivePlayerActivity.EXTRA_SERVERS, servers)
-                        putExtra(LivePlayerActivity.EXTRA_PROGRAM, program.orEmpty().trim())
-                        putExtra(LivePlayerActivity.EXTRA_CATEGORY, category.orEmpty().trim())
-                    }
-                    activity.startActivity(intent)
-                } catch (error: Throwable) {
-                    Log.e("TedflixMain", "Falha ao abrir o player ao vivo", error)
-                    Toast.makeText(activity, "Não foi possível abrir o player ao vivo.", Toast.LENGTH_LONG).show()
-                }
-            }
-        }
-
-        @JavascriptInterface
         fun getProfileName(): String = activity.currentProfileName()
-
-        @JavascriptInterface
-        fun openNotifications() {
-            activity.runOnUiThread {
-                try {
-                    activity.startActivity(Intent(activity, NotificationActivity::class.java))
-                } catch (error: Throwable) {
-                    Log.e("TedflixMain", "Falha ao abrir notificações", error)
-                    Toast.makeText(activity, "Não foi possível abrir as notificações.", Toast.LENGTH_LONG).show()
-                }
-            }
-        }
 
         @JavascriptInterface
         fun openFavorites() {
@@ -857,39 +854,28 @@ class MainActivity : Activity() {
 
         @JavascriptInterface
         fun getFavorites(): String {
-            return try {
-                val result = AuthSession.listFavorites()
-                if (!result.ok) "{\"success\":false,\"error\":${org.json.JSONObject.quote(result.message)}}"
-                else org.json.JSONObject().put("success", true).put("favoritos", org.json.JSONArray().apply {
-                    result.value.orEmpty().forEach { item ->
-                        put(org.json.JSONObject().apply {
-                            put("filmeId", item.filmeId)
-                            put("titulo", item.titulo)
-                            put("thumb", item.thumb)
-                            put("adicionadoEm", item.adicionadoEm)
-                        })
-                    }
-                }).toString()
-            } catch (error: Throwable) {
-                Log.w("TedflixMain", "Falha ao ler favoritos", error)
-                "{\"success\":false,\"error\":\"Não foi possível carregar favoritos.\"}"
-            }
+            return org.json.JSONObject().put("success", true).put("favoritos", org.json.JSONArray().apply {
+                activity.favoriteCache.forEach { item ->
+                    put(org.json.JSONObject().apply {
+                        put("filmeId", item.filmeId)
+                        put("titulo", item.titulo)
+                        put("thumb", item.thumb)
+                        put("adicionadoEm", item.adicionadoEm)
+                    })
+                }
+            }).toString()
         }
 
         @JavascriptInterface
-        fun toggleFavorite(filmeId: String?, titulo: String?, thumb: String?): String {
-            return try {
-                val result = AuthSession.toggleFavorite(filmeId.orEmpty(), titulo.orEmpty(), thumb.orEmpty())
+        fun toggleFavorite(filmeId: String?, titulo: String?, thumb: String?, contentType: String?): String {
+            val id = filmeId.orEmpty()
+            val wasFavorite = activity.favoriteCache.any { it.filmeId == id }
+            Thread {
+                val result = AuthSession.toggleFavorite(id, titulo.orEmpty(), thumb.orEmpty(), contentType.orEmpty().ifBlank { "movie" })
+                if (!result.ok) Log.w("TedflixMain", "Falha ao alternar favorito", Exception(result.message))
                 activity.refreshHeaderBadges()
-                org.json.JSONObject().apply {
-                    put("success", result.ok)
-                    if (result.value != null) put("favorito", result.value)
-                    if (result.message.isNotBlank()) put("error", result.message)
-                }.toString()
-            } catch (error: Throwable) {
-                Log.w("TedflixMain", "Falha ao alternar favorito", error)
-                "{\"success\":false,\"favorito\":false,\"error\":\"Não foi possível atualizar o favorito.\"}"
-            }
+            }.apply { name = "TedflixToggleFavorite"; start() }
+            return org.json.JSONObject().put("success", true).put("favorito", !wasFavorite).toString()
         }
 
         @JavascriptInterface
@@ -979,8 +965,8 @@ class MainActivity : Activity() {
         @JavascriptInterface
         fun createProfileFromSettings(code: String?, email: String?, password: String?, name: String?, avatarSeed: String?): String {
             return try {
-                val result = AuthSession.createTokenProfile(
-                    code.orEmpty(), name.orEmpty(), avatarSeed.orEmpty(),
+                val result = AuthSession.createRemoteProfile(
+                    name.orEmpty(), false, "fun-emoji", avatarSeed.orEmpty(), "",
                 )
                 org.json.JSONObject().apply {
                     put("success", result.ok)
@@ -1008,18 +994,6 @@ class MainActivity : Activity() {
         }
 
         @JavascriptInterface
-        fun openSources() {
-            activity.runOnUiThread {
-                try {
-                    activity.startActivity(Intent(activity, com.tedflix.app.sources.SourceSettingsActivity::class.java))
-                } catch (error: Throwable) {
-                    Log.e("TedflixMain", "Falha ao abrir as fontes", error)
-                    Toast.makeText(activity, "Não foi possível abrir as fontes.", Toast.LENGTH_LONG).show()
-                }
-            }
-        }
-
-        @JavascriptInterface
         fun openAccount() {
             activity.runOnUiThread {
                 if (!activity::webView.isInitialized) return@runOnUiThread
@@ -1030,9 +1004,12 @@ class MainActivity : Activity() {
         @JavascriptInterface
         fun getAccountStatus(): String {
             return try {
-                val status = AuthSession.status()
-                if (!status.ok) "{\"success\":false,\"error\":${org.json.JSONObject.quote(status.message)}}"
-                else org.json.JSONObject().put("success", true).put("status", status.value ?: org.json.JSONObject()).toString()
+                val user = AuthSession.cachedUser()
+                org.json.JSONObject().put("success", true).put("status", org.json.JSONObject().apply {
+                    put("status", user?.accountStatus.orEmpty())
+                    put("expiresAt", user?.expiresAt.orEmpty())
+                    user?.daysRemaining?.let { put("daysRemaining", it) }
+                }).toString()
             } catch (error: Throwable) {
                 "{\"success\":false,\"error\":\"Não foi possível carregar o status da conta.\"}"
             }
@@ -1041,56 +1018,23 @@ class MainActivity : Activity() {
         @JavascriptInterface
         fun getAccountProfile(): String {
             return try {
-                val result = AuthSession.profile()
-                if (!result.ok) {
-                    org.json.JSONObject()
-                        .put("success", false)
-                        .put("error", result.message.ifBlank { "Não foi possível carregar os dados da conta." })
-                        .toString()
-                } else {
-                    val user = result.value
-                    org.json.JSONObject().apply {
-                        put("success", true)
-                        put("user", org.json.JSONObject().apply {
-                            put("id", user?.id.orEmpty())
-                            put("email", user?.email.orEmpty())
-                            put("username", user?.username.orEmpty())
-                            put("accountExpiresAt", user?.expiresAt.orEmpty())
-                            put("accountStatus", user?.accountStatus.orEmpty())
-                            user?.daysRemaining?.let { put("daysRemaining", it) }
-                            put("createdAt", user?.createdAt.orEmpty())
-                            put("lastUsedAt", user?.lastUsedAt.orEmpty())
-                            user?.warning?.let { put("warning", it) }
-                        })
-                    }.toString()
-                }
+                val user = AuthSession.cachedUser()
+                org.json.JSONObject().apply {
+                    put("success", user != null)
+                    put("user", org.json.JSONObject().apply {
+                        put("id", user?.id.orEmpty())
+                        put("email", user?.email.orEmpty())
+                        put("username", user?.username.orEmpty())
+                        put("accountExpiresAt", user?.expiresAt.orEmpty())
+                        put("accountStatus", user?.accountStatus.orEmpty())
+                        user?.daysRemaining?.let { put("daysRemaining", it) }
+                        put("createdAt", user?.createdAt.orEmpty())
+                        put("lastUsedAt", user?.lastUsedAt.orEmpty())
+                    })
+                }.toString()
             } catch (error: Throwable) {
                 Log.w("TedflixMain", "Falha ao carregar os dados da conta", error)
                 "{\"success\":false,\"error\":\"Não foi possível carregar os dados da conta.\"}"
-            }
-        }
-
-        @JavascriptInterface
-        fun updateProfileName(username: String?): String {
-            return try {
-                val result = AuthSession.updateUsername(username.orEmpty())
-                org.json.JSONObject().put("success", result.ok).apply {
-                    if (result.message.isNotBlank()) put("error", result.message)
-                }.toString()
-            } catch (_: Throwable) {
-                "{\"success\":false,\"error\":\"Não foi possível salvar o nome.\"}"
-            }
-        }
-
-        @JavascriptInterface
-        fun changeProfilePassword(currentPassword: String?, newPassword: String?): String {
-            return try {
-                val result = AuthSession.changePassword(currentPassword.orEmpty(), newPassword.orEmpty())
-                org.json.JSONObject().put("success", result.ok).apply {
-                    if (result.message.isNotBlank()) put("error", result.message)
-                }.toString()
-            } catch (_: Throwable) {
-                "{\"success\":false,\"error\":\"Não foi possível alterar a senha.\"}"
             }
         }
 

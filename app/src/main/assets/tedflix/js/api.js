@@ -1,4 +1,4 @@
-import { API_BASE, LIVE_API_BASE } from "./config.js";
+import { API_BASE } from "./config.js";
 
 /* Cache em memória + deduplicação de requisições.
    Os endpoints "/stream" devolvem o catálogo inteiro (megabytes), então
@@ -8,12 +8,33 @@ const emVoo = new Map();
 
 const TTL_CURTO = 5 * 60 * 1000;
 const TTL_LONGO = 30 * 60 * 1000;
+const CACHE_PREFIX = "tedflix:catalog-cache:v2:";
+const CACHE_MAX_BYTES = 1_800_000;
+
+function lerCachePersistente(chave) {
+  try {
+    const item = JSON.parse(localStorage.getItem(CACHE_PREFIX + chave) || "null");
+    return item && item.t && item.v !== undefined ? item : null;
+  } catch (_) { return null; }
+}
+
+function salvarCachePersistente(chave, valor) {
+  try {
+    const texto = JSON.stringify({ t: Date.now(), v: valor });
+    if (texto.length <= CACHE_MAX_BYTES) localStorage.setItem(CACHE_PREFIX + chave, texto);
+  } catch (_) { /* quota cheia: o cache em memória continua válido */ }
+}
 
 async function getJSON(caminho, ttl = TTL_CURTO, base = API_BASE) {
   const chave = `${base}${caminho}`;
   const agora = Date.now();
   const guardado = cache.get(chave);
   if (guardado && agora - guardado.t < ttl) return guardado.v;
+  const persistido = lerCachePersistente(chave);
+  if (persistido && agora - persistido.t < ttl) {
+    cache.set(chave, persistido);
+    return persistido.v;
+  }
   if (emVoo.has(chave)) return emVoo.get(chave);
 
   const p = fetch(`${base}${caminho}`)
@@ -23,11 +44,13 @@ async function getJSON(caminho, ttl = TTL_CURTO, base = API_BASE) {
     })
     .then((v) => {
       cache.set(chave, { t: Date.now(), v });
+      salvarCachePersistente(chave, v);
       emVoo.delete(chave);
       return v;
     })
     .catch((e) => {
       emVoo.delete(chave);
+      if (persistido?.v !== undefined) return persistido.v;
       throw e;
     });
 
@@ -130,12 +153,29 @@ export const buscar = (q, pagina = 1) =>
 
 /* ---------------- DETALHES ---------------- */
 
-export const getTitulo = (categoria, slug) =>
-  getJSON(`/filme/${categoria}/${slug}`, TTL_LONGO).then((d) => ({
+export const getTitulo = async (categoria, slug, tipo = "filme") => {
+  if (String(tipo).toLowerCase().includes("séri") || String(tipo).toLowerCase().includes("serie")) {
+    const [temporadas, busca] = await Promise.all([
+      getJSON(`/series/serie/${categoria}/${slug}/temporadas`, TTL_LONGO),
+      buscar(slug),
+    ]);
+    const item = (busca.resultados || []).find((i) => String(i.link_assistir || "").includes(`/${slug}`)) || busca.resultados?.[0] || {};
+    return {
+      ...item,
+      titulo: limparTitulo(item.titulo || temporadas.serie || slug),
+      categoria,
+      slug,
+      tipo: "Série",
+      temporadas: temporadas.temporadas || [],
+      recomendados: (item.recomendados || []).map((i) => normalizar(i)),
+    };
+  }
+  return getJSON(`/filmes/filme/${categoria}/${slug}`, TTL_LONGO).then((d) => ({
     ...d,
     titulo: limparTitulo(d.titulo),
     recomendados: (d.recomendados || []).map((i) => normalizar(i)),
   }));
+};
 
 export const getTemporadas = (categoria, slug) =>
   getJSON(`/serie/${categoria}/${slug}/temporadas`, TTL_LONGO).then((d) => d.temporadas || []);
@@ -145,88 +185,11 @@ export const getEpisodios = (categoria, slug, numero) =>
     (d) => d.episodios || [],
   );
 
-/* ---------------- CANAIS AO VIVO ---------------- */
-
-function urlHttpValida(url) {
-  try {
-    const parsed = new URL(String(url || ""));
-    return parsed.protocol === "http:" || parsed.protocol === "https:";
-  } catch (_) {
-    return false;
-  }
-}
-
-export function normalizarCanal(item = {}) {
-  const embeds = (Array.isArray(item.embeds) ? item.embeds : [])
-    .map((embed) => ({
-      provider: String(embed?.provider || "Servidor"),
-      quality: String(embed?.quality || "Automático"),
-      embed_url: String(embed?.embed_url || ""),
-    }))
-    .filter((embed) => urlHttpValida(embed.embed_url));
-  return {
-    id: String(item.id || ""),
-    titulo: String(item.name || item.title || "Canal ao vivo"),
-    descricao: String(item.description || ""),
-    logo: String(item.logo_url || item.logo || ""),
-    categoria: String(item.category || "Outros"),
-    embeds,
-    epg: item.epg || {},
-    aoVivo: true,
-  };
-}
-
-export const getCanais = (categoria = "") => {
-  const caminho = categoria ? `/channels?category=${encodeURIComponent(categoria)}` : "/channels";
-  return getJSON(caminho, TTL_CURTO, LIVE_API_BASE).then((d) =>
-    (Array.isArray(d.data) ? d.data : []).map(normalizarCanal),
-  );
-};
-
-export const getCanalCategorias = () =>
-  getJSON("/channels/categories", TTL_LONGO, LIVE_API_BASE).then((d) =>
-    (Array.isArray(d.data) ? d.data : []).map((item) => ({
-      id: String(item.id || ""),
-      nome: String(item.name || "Outros"),
-    })),
-  );
-
-export const getCanal = (id) =>
-  getJSON(`/channels/${encodeURIComponent(id)}`, TTL_CURTO, LIVE_API_BASE).then((d) =>
-    normalizarCanal(d.data && !Array.isArray(d.data) ? d.data : d.channel || d),
-  );
-
-export const getEventosAoVivo = () =>
-  getJSON("/sports?status=live", TTL_CURTO, LIVE_API_BASE).then((d) =>
-    (Array.isArray(d.data) ? d.data : []).map((item) => ({
-      ...item,
-      id: String(item.id || ""),
-      titulo: String(item.title || "Evento ao vivo"),
-      descricao: String(item.description || ""),
-      logo: String(item.poster || ""),
-      categoria: String(item.category || "Esportes"),
-      embeds: (Array.isArray(item.embeds) ? item.embeds : [])
-        .map((embed) => ({
-          provider: String(embed?.provider || "Servidor"),
-          quality: String(embed?.quality || "Automático"),
-          embed_url: String(embed?.embed_url || ""),
-        }))
-        .filter((embed) => urlHttpValida(embed.embed_url)),
-      aoVivo: true,
-    })),
-  );
-
-export const buscarCanais = (q) =>
-  getJSON(`/search?q=${encodeURIComponent(q || "")}`, TTL_CURTO, LIVE_API_BASE).then((d) => ({
-    canais: (Array.isArray(d.data?.channels) ? d.data.channels : []).map(normalizarCanal),
-    eventos: Array.isArray(d.data?.events) ? d.data.events : [],
-  }));
-
 /* ---------------- PLAYER ---------------- */
 
 /** Texto puro do manifest .m3u8 (reprodução direta pelo CDN). */
 export async function getManifesto(categoria, slug) {
-  const r = await fetch(`${API_BASE}/filme-player/${categoria}/${slug}`);
+  const r = await fetch(`${API_BASE}/filmes/filme-player/${categoria}/${slug}`);
   if (!r.ok) throw new Error("Este título está indisponível no momento.");
   const texto = await r.text();
   if (!texto.includes("#EXTM3U")) throw new Error("Fonte de vídeo inválida.");

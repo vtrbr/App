@@ -9,7 +9,6 @@ import paginaBusca from "./pages/busca.js";
 import paginaDetalhe from "./pages/detalhes.js";
 import paginaAssistir from "./pages/assistir.js";
 import paginaConfiguracoes from "./pages/configuracoes.js";
-import paginaCanais, { paginaCanal, paginaEvento } from "./pages/canais.js";
 import { limparPlayer } from "./components/player.js";
 import { medirOcioso } from "./net.js";
 
@@ -54,12 +53,6 @@ function resolver(hash) {
       paginaCatalogo(r, { titulo: cat ? cat.label : p[1], carregar: () => getGenero(p[1]) });
   }
   if (p[0] === "agenda") return (r) => paginaAgenda(r);
-  if (p[0] === "canais") {
-    const params = new URLSearchParams(queryString);
-    return (r) => paginaCanais(r, { categoria: params.get("categoria") || "" });
-  }
-  if (p[0] === "canal" && p[1]) return (r) => paginaCanal(r, { id: decodeURIComponent(p[1]) });
-  if (p[0] === "evento" && p[1]) return (r) => paginaEvento(r, { id: decodeURIComponent(p[1]) });
   if (p[0] === "busca") return (r) => paginaBusca(r);
   if (p[0] === "favorito") {
     const params = new URLSearchParams(queryString);
@@ -146,9 +139,6 @@ function tituloDaRota(hash) {
     series: "Séries",
     categorias: "Categorias",
     agenda: "Agenda de episódios",
-    canais: "Canais ao vivo",
-    canal: "Canal ao vivo",
-    evento: "Evento ao vivo",
     busca: "Buscar",
     favorito: "Favorito",
     titulo: "Detalhes",

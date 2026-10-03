@@ -180,7 +180,7 @@ class FavoritesActivity : Activity() {
     private fun removeFavorite(favorite: AuthSession.Favorite) {
         TedflixLoading.show(loadingPanel, true)
         Thread {
-            val result = AuthSession.toggleFavorite(favorite.filmeId, favorite.titulo, favorite.thumb)
+            val result = AuthSession.toggleFavorite(favorite.filmeId, favorite.titulo, favorite.thumb, favorite.tipo.ifBlank { "movie" })
             runOnUiThread {
                 TedflixLoading.show(loadingPanel, false)
                 if (!result.ok) toast(result.message.ifBlank { "Não foi possível remover o favorito." }) else loadFavorites()

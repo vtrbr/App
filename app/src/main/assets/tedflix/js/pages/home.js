@@ -126,7 +126,7 @@ async function carregarContinuarAssistindo() {
         // O detalhe completo é opcional e não pode bloquear a fileira.
         if (categoria && slug && !detalhe) {
           try {
-            const detalhePromise = getTitulo(categoria, slug);
+            const detalhePromise = getTitulo(categoria, slug, item.tipo || "filme");
             detalhe = await Promise.race([
               detalhePromise,
               new Promise((resolve) => setTimeout(() => resolve(null), 900)),
@@ -140,7 +140,7 @@ async function carregarContinuarAssistindo() {
         const detalheSlug = String(item.serieSlug || slug).trim();
         let detalhePai = detalhe;
         if (ehEpisodio && detalheCategoria && detalheSlug) {
-          try { detalhePai = await getTitulo(detalheCategoria, detalheSlug); } catch (_) {}
+          try { detalhePai = await getTitulo(detalheCategoria, detalheSlug, "serie"); } catch (_) {}
         }
         // Mesmo sem metadados completos, não escondemos o registro salvo.
         // O link de favorito permite que a rota faça uma nova busca pelo título.

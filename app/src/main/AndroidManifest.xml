@@ -2,7 +2,6 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
-    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 
     <application
         android:name=".TedflixApplication"
@@ -28,14 +27,6 @@
             android:exported="true"
             android:theme="@style/Theme.Tedflix" />
         <activity
-            android:name=".auth.AccountActivity"
-            android:exported="false"
-            android:theme="@style/Theme.Tedflix" />
-        <activity
-            android:name=".auth.NotificationActivity"
-            android:exported="false"
-            android:theme="@style/Theme.Tedflix" />
-        <activity
             android:name=".auth.FavoritesActivity"
             android:exported="false"
             android:theme="@style/Theme.Tedflix" />
@@ -45,16 +36,6 @@
             android:exported="false"
             android:screenOrientation="landscape"
             android:theme="@style/Theme.Tedflix.Player" />
-        <activity
-            android:name=".LivePlayerActivity"
-            android:configChanges="orientation|screenSize|keyboardHidden|smallestScreenSize|screenLayout"
-            android:exported="false"
-            android:screenOrientation="landscape"
-            android:theme="@style/Theme.Tedflix.Player" />
-        <activity
-            android:name=".sources.SourceSettingsActivity"
-            android:exported="false"
-            android:theme="@style/Theme.Tedflix" />
         <activity
             android:name=".MainActivity"
             android:configChanges="orientation|screenSize|keyboardHidden|smallestScreenSize|screenLayout"

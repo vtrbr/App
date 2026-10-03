@@ -20,806 +20,111 @@ import javax.crypto.KeyGenerator
 import javax.crypto.SecretKey
 import javax.crypto.spec.GCMParameterSpec
 
-/**
- * Sessão do Tedflix. O bearer nunca é colocado em localStorage, URLs ou logs.
- * O token é cifrado com uma chave AES-GCM mantida no Android Keystore.
- */
+/** Sessão Tedflix: ID token e refresh token ficam cifrados no Android Keystore. */
 object AuthSession {
     private const val TAG = "TedflixAuthSession"
-    private const val AUTH_BASE = "https://auth.cryptitys.site"
-    const val MOVIE_API_BASE = "https://tedtv.onrender.com/api"
-    const val MOVIE_API_HOST = "tedtv.onrender.com"
+    // User/Admin Server documentado em 02/10/2026. O Catalog Server continua separado.
+    private const val AUTH_BASE = "https://servidores-ted-auth.onrender.com"
+    const val MOVIE_API_BASE = "https://servidores-ted-auth-1.onrender.com/api"
+    const val MOVIE_API_HOST = "servidores-ted-auth-1.onrender.com"
     private const val PREFS = "tedflix_auth_session"
     private const val TOKEN_KEY = "encrypted_access_token"
+    private const val REFRESH_KEY = "encrypted_refresh_token"
     private const val KEY_ALIAS = "TedflixAuthBearerKey"
     private const val PROFILES_PREFS = "tedflix_saved_profiles"
     private const val PROFILES_KEY = "profiles_json"
     private const val ACTIVE_PROFILE_KEY = "active_profile_id"
 
-    data class User(
-        val id: String = "",
-        val email: String = "",
-        val username: String = "",
-        val expiresAt: String = "",
-        val accountStatus: String = "",
-        val daysRemaining: Int? = null,
-        val createdAt: String = "",
-        val lastUsedAt: String = "",
-        val warning: JSONObject? = null,
-    )
+    data class User(val id:String="", val email:String="", val username:String="", val expiresAt:String="", val accountStatus:String="", val daysRemaining:Int?=null, val createdAt:String="", val lastUsedAt:String="", val warning:JSONObject?=null, val name:String="", val role:String="", val emailVerified:Boolean?=null)
+    data class Profile(val id:String, val name:String, val avatarSeed:String, val avatarStyle:String="fun-emoji", val email:String="", val username:String="", val isKids:Boolean=false, val isPrimary:Boolean=false)
+    private data class StoredProfile(val id:String,val name:String,val avatarSeed:String,val avatarStyle:String,val email:String,val username:String,val isKids:Boolean,val isPrimary:Boolean,val user:User,val encryptedToken:String)
+    data class Favorite(val filmeId:String,val titulo:String,val thumb:String,val adicionadoEm:String,val categoria:String="",val slug:String="",val tipo:String="")
+    data class CatalogMatch(val filmeId:String,val titulo:String,val thumb:String,val categoria:String,val slug:String,val tipo:String)
+    data class HistoryItem(val filmeId:String,val titulo:String,val tempo:String,val thumb:String,val ultimoAcesso:String,val categoria:String="",val slug:String="",val tipo:String="",val serieCategoria:String="",val serieSlug:String="",val positionSeconds:Long=0,val durationSeconds:Long=0)
+    data class Result<T>(val ok:Boolean,val value:T?=null,val message:String="",val statusCode:Int=0)
+    data class RawResponse(val statusCode:Int,val body:String,val contentType:String)
+    private lateinit var appContext:Context
+    fun init(context:Context){ appContext=context.applicationContext }
+    fun hasToken()=token()?.isNotBlank()==true
+    fun token():String? = readSecret(TOKEN_KEY)
+    private fun refreshToken():String? = readSecret(REFRESH_KEY)
+    private fun readSecret(key:String):String? { if(!::appContext.isInitialized)return null; val raw=appContext.getSharedPreferences(PREFS,0).getString(key,null)?:return null; return try{decrypt(raw)}catch(_:Throwable){null} }
+    fun saveLogin(accessToken:String,user:User?,refresh:String?=null){ if(accessToken.isBlank())return; val e=appContext.getSharedPreferences(PREFS,0).edit().putString(TOKEN_KEY,encrypt(accessToken)); if(!refresh.isNullOrBlank())e.putString(REFRESH_KEY,encrypt(refresh)); e.putString("user_id",user?.id.orEmpty()).putString("user_email",user?.email.orEmpty()).putString("user_name",user?.username.orEmpty()).putString("user_real_name",user?.name.orEmpty()).putString("expires_at",user?.expiresAt.orEmpty()).putString("account_status",user?.accountStatus.orEmpty()).putInt("days_remaining",user?.daysRemaining?:-1).putString("created_at",user?.createdAt.orEmpty()).putString("last_used_at",user?.lastUsedAt.orEmpty()).putString("role",user?.role.orEmpty()).apply() }
+    fun cachedUser():User? { if(!hasToken())return null; val p=appContext.getSharedPreferences(PREFS,0); return User(p.getString("user_id","").orEmpty(),p.getString("user_email","").orEmpty(),p.getString("user_name","").orEmpty(),p.getString("expires_at","").orEmpty(),p.getString("account_status","").orEmpty(),p.getInt("days_remaining",-1).takeIf{it>=0},p.getString("created_at","").orEmpty(),p.getString("last_used_at","").orEmpty(),name=p.getString("user_real_name","").orEmpty(),role=p.getString("role","").orEmpty()) }
+    fun clear(){ if(!::appContext.isInitialized)return; appContext.getSharedPreferences(PREFS,0).edit().clear().apply(); appContext.getSharedPreferences(PROFILES_PREFS,0).edit().clear().apply() }
+    fun profiles():List<Profile> = readStoredProfiles().map{it.public()}
+    fun activeProfileId():String { val p=appContext.getSharedPreferences(PROFILES_PREFS,0); val id=p.getString(ACTIVE_PROFILE_KEY,"").orEmpty(); return readStoredProfiles().firstOrNull{it.id==id}?.id?:readStoredProfiles().firstOrNull()?.id.orEmpty() }
+    fun restoreActiveProfileIfNeeded()=hasToken()
+    fun ensureCurrentProfile(defaultName:String,defaultAvatarSeed:String):Profile? { val existing=readStoredProfiles().firstOrNull(); if(existing!=null)return existing.public(); return null }
 
-    data class Profile(
-        val id: String,
-        val name: String,
-        val avatarSeed: String,
-        val avatarStyle: String = "fun-emoji",
-        val email: String = "",
-    )
-
-    private data class StoredProfile(
-        val id: String,
-        val name: String,
-        val avatarSeed: String,
-        val avatarStyle: String,
-        val email: String,
-        val user: User,
-        val encryptedToken: String,
-    )
-
-    data class Notification(
-        val id: String,
-        val type: String,
-        val title: String,
-        val body: String,
-        val read: Boolean,
-        val sentAt: String,
-    )
-
-    data class Favorite(
-        val filmeId: String,
-        val titulo: String,
-        val thumb: String,
-        val adicionadoEm: String,
-        val categoria: String = "",
-        val slug: String = "",
-        val tipo: String = "",
-    )
-
-    data class CatalogMatch(
-        val filmeId: String,
-        val titulo: String,
-        val thumb: String,
-        val categoria: String,
-        val slug: String,
-        val tipo: String,
-    )
-
-    data class HistoryItem(
-        val filmeId: String,
-        val titulo: String,
-        val tempo: String,
-        val thumb: String,
-        val ultimoAcesso: String,
-        val categoria: String = "",
-        val slug: String = "",
-        val tipo: String = "",
-        val serieCategoria: String = "",
-        val serieSlug: String = "",
-    )
-
-    data class Result<T>(
-        val ok: Boolean,
-        val value: T? = null,
-        val message: String = "",
-        val statusCode: Int = 0,
-    )
-
-    data class RawResponse(
-        val statusCode: Int,
-        val body: String,
-        val contentType: String,
-    )
-
-    private lateinit var appContext: Context
-
-    fun init(context: Context) {
-        appContext = context.applicationContext
+    fun register(name:String,email:String,password:String):Result<User>{
+        if(name.isBlank()||email.isBlank()||password.isBlank())return Result(false,message="Preencha nome, e-mail e senha.")
+        return authRequest("/api/auth/register",JSONObject().put("name",name.trim()).put("email",email.trim()).put("password",password),true)
     }
+    fun login(email:String,password:String):Result<User>{
+        if(email.isBlank()||password.isBlank())return Result(false,message="Informe e-mail e senha.")
+        return authRequest("/api/auth/login",JSONObject().put("email",email.trim()).put("password",password),true)
+    }
+    private fun authRequest(path:String,body:JSONObject,save:Boolean):Result<User>{ return try{ val r=rawRequest("POST",path,body.toString(),false); val j=parseObject(r.body); if(r.statusCode !in 200..299)return Result(false,message=serverMessage(j,r.statusCode),statusCode=r.statusCode); val auth=j.optJSONObject("auth")?:j; val token=auth.optString("idToken").ifBlank{j.optString("idToken")}.ifBlank{j.optString("token")}; if(token.isBlank())return Result(false,message="O servidor não devolveu uma sessão válida.",statusCode=r.statusCode); val baseUser=parseUser(j.optJSONObject("account")?:j.optJSONObject("user"))?:User(email=body.optString("email"),name=body.optString("name")); val sub=j.optJSONObject("subscription"); val user=if(sub!=null)baseUser.copy(expiresAt=baseUser.expiresAt.ifBlank{sub.optString("expiresAt")},accountStatus=baseUser.accountStatus.ifBlank{sub.optString("status")})else baseUser; saveLogin(token,user,auth.optString("refreshToken").ifBlank{j.optString("refreshToken")}); syncProfiles(j); Result(true,user,statusCode=r.statusCode) }catch(e:Throwable){Result(false,message=friendlyNetworkError(e))} }
+    private fun syncProfiles(j:JSONObject){ val arr=j.optJSONArray("profiles")?:j.optJSONObject("data")?.optJSONArray("profiles")?:return; val token=token()?:return; val user=cachedUser()?:User(); val list=mutableListOf<StoredProfile>(); for(i in 0 until arr.length()){val p=arr.optJSONObject(i)?:continue; val av=p.optJSONObject("avatar"); val seed=av?.optString("seed").orEmpty().ifBlank{p.optString("avatarSeed").ifBlank{"tedflix-avatar-${i+1}"}}; list+=StoredProfile(p.optString("id").ifBlank{p.optString("profileId")},p.optString("name").ifBlank{"Meu perfil"},seed,av?.optString("style").orEmpty().ifBlank{p.optString("avatarStyle").ifBlank{"fun-emoji"}},user.email,p.optString("username"),p.optBoolean("isKids",false),p.optBoolean("isPrimary",false),user,encrypt(token))}; if(list.isNotEmpty())saveStoredProfiles(list,list.firstOrNull{it.isPrimary}?.id?:list.first().id) else appContext.getSharedPreferences(PROFILES_PREFS,0).edit().clear().apply() }
+    fun refreshProfiles():Result<List<Profile>> { return try { val r=rawRequest("GET","/api/profiles",null,true); val j=parseObject(r.body); if(r.statusCode !in 200..299)return Result(false,message=serverMessage(j,r.statusCode),statusCode=r.statusCode); syncProfiles(j); Result(true,profiles(),statusCode=r.statusCode) } catch(e:Throwable) { Result(false,message=friendlyNetworkError(e)) } }
+    fun activateProfile(id:String):Result<Profile>{ val p=readStoredProfiles().firstOrNull{it.id==id}?:return Result(false,message="Perfil não encontrado."); return try{val selected=rawRequest("POST","/api/profiles/${Uri.encode(id)}/select", "{}",true); val selectedJson=parseObject(selected.body); if(selected.statusCode !in 200..299)return Result(false,message=serverMessage(selectedJson,selected.statusCode),statusCode=selected.statusCode); val accessResponse=rawRequest("GET","/api/profiles/${Uri.encode(id)}/access",null,true); val accessJson=parseObject(accessResponse.body); if(accessResponse.statusCode !in 200..299)return Result(false,message=serverMessage(accessJson,accessResponse.statusCode),statusCode=accessResponse.statusCode); val access=accessJson.optJSONObject("access")?:return Result(false,message="A API não devolveu o estado de acesso do perfil.",statusCode=accessResponse.statusCode); if(!access.optBoolean("allowed",false))return Result(false,message="Este perfil não tem acesso liberado no momento.",statusCode=accessResponse.statusCode); appContext.getSharedPreferences(PROFILES_PREFS,0).edit().putString(ACTIVE_PROFILE_KEY,id).apply(); Result(true,p.public(),statusCode=accessResponse.statusCode)}catch(e:Throwable){Result(false,message=friendlyNetworkError(e))} }
+    fun createProfile(code:String,email:String,password:String,name:String,avatarSeed:String):Result<Profile> = createRemoteProfile(name,false,"fun-emoji",avatarSeed)
+    fun createRemoteProfile(name:String,isKids:Boolean,style:String,seed:String="",username:String=""):Result<Profile>{ val body=JSONObject().put("name",name).put("isKids",isKids).put("avatar",JSONObject().put("style",style).put("seed",seed.ifBlank{name})); if(username.isNotBlank())body.put("username",username); return try{val r=rawRequest("POST","/api/profiles",body.toString(),true); val j=parseObject(r.body); if(r.statusCode !in 200..299)return Result(false,message=serverMessage(j,r.statusCode),statusCode=r.statusCode); val p=j.optJSONObject("profile")?:j.optJSONObject("createdProfile")?:j; val token=token()?:return Result(false,message="Sessão expirada."); val sp=StoredProfile(p.optString("id").ifBlank{p.optString("profileId")},p.optString("name").ifBlank{name},p.optJSONObject("avatar")?.optString("seed").orEmpty().ifBlank{seed.ifBlank{name}},p.optJSONObject("avatar")?.optString("style").orEmpty().ifBlank{style},cachedUser()?.email.orEmpty(),p.optString("username").ifBlank{username},p.optBoolean("isKids",isKids),p.optBoolean("isPrimary",false),cachedUser()?:User(),encrypt(token)); val all=readStoredProfiles()+sp; saveStoredProfiles(all,sp.id); Result(true,sp.public(),statusCode=r.statusCode)}catch(e:Throwable){Result(false,message=friendlyNetworkError(e))} }
+    fun updateProfile(id:String,name:String,avatarSeed:String):Boolean{ val old=readStoredProfiles().firstOrNull{it.id==id}?:return false; return try{val body=JSONObject().put("name",name.ifBlank{old.name}).put("avatar",JSONObject().put("style",old.avatarStyle).put("seed",avatarSeed.ifBlank{old.avatarSeed})); val r=rawRequest("PATCH","/api/profiles/${Uri.encode(id)}",body.toString(),true); if(r.statusCode !in 200..299)return false; saveStoredProfiles(readStoredProfiles().map{if(it.id==id)it.copy(name=name.ifBlank{it.name},avatarSeed=avatarSeed.ifBlank{it.avatarSeed})else it},activeProfileId());true}catch(_:Throwable){false} }
+    fun deleteProfile(id:String):Boolean{ val p=readStoredProfiles().firstOrNull{it.id==id}?:return false;if(p.isPrimary)return false; return try{val r=rawRequest("DELETE","/api/profiles/${Uri.encode(id)}",null,true);if(r.statusCode !in 200..299)return false;saveStoredProfiles(readStoredProfiles().filterNot{it.id==id},readStoredProfiles().firstOrNull{it.id!=id}?.id.orEmpty());true}catch(_:Throwable){false} }
+    fun updateProfileFull(id:String,name:String,username:String,style:String,seed:String,isKids:Boolean):Result<JSONObject>{ val result=authenticatedJson("PATCH","/api/profiles/${Uri.encode(id)}",JSONObject().put("name",name).put("username",username).put("isKids",isKids).put("avatar",JSONObject().put("style",style).put("seed",seed)).toString()); if(result.ok){ val current=readStoredProfiles(); saveStoredProfiles(current.map{if(it.id==id)it.copy(name=name,username=username,avatarStyle=style,avatarSeed=seed,isKids=isKids)else it},activeProfileId()) }; return result }
+    fun verify():Result<User> = profile()
+    fun profile():Result<User> = authenticatedJson("GET","/api/auth/me").map{parseUser(it.optJSONObject("account")?:it)?:cachedUser()?:User()}
+    fun status():Result<JSONObject> = authenticatedJson("GET","/api/subscription")
+    fun forgotPassword(email:String)=authenticatedJson("POST","/api/auth/forgot-password",JSONObject().put("email",email).toString())
 
-    fun hasToken(): Boolean = token().isNullOrBlank().not()
+    private fun profilePath(suffix:String)="/api/profiles/${Uri.encode(activeProfileId())}$suffix"
+    fun listFavorites():Result<List<Favorite>> = authenticatedJson("GET",profilePath("/favorites")).map{j->val a=j.optJSONArray("favorites")?:j.optJSONArray("favoritos")?:JSONArray();buildList{for(i in 0 until a.length()){val x=a.optJSONObject(i)?:continue;add(Favorite(x.optString("contentId").ifBlank{x.optString("filmeId")},x.optString("title").ifBlank{x.optString("titulo")},x.optString("thumb").ifBlank{x.optString("imagem")},x.optString("createdAt").ifBlank{x.optString("adicionadoEm")},x.optString("categoria"),x.optString("slug"),x.optString("contentType").ifBlank{x.optString("tipo")}))}}}
+    fun toggleFavorite(filmeId:String,titulo:String,thumb:String,contentType:String="movie")=authenticatedJson("POST",profilePath("/favorites/toggle"),JSONObject().put("contentId",filmeId).put("title",titulo).put("thumb",thumb).put("contentType",contentType).toString()).map{it.optBoolean("favorited",it.optBoolean("favorito"))}
+    fun continueWatching():Result<List<HistoryItem>> = authenticatedJson("GET",profilePath("/history")).map{j->val a=j.optJSONArray("history")?:j.optJSONArray("items")?:j.optJSONArray("resultados")?:JSONArray();buildList{for(i in 0 until a.length()){val x=a.optJSONObject(i)?:continue;val pos=x.optLong("positionSeconds",x.optLong("tempoSeconds",0));val dur=x.optLong("durationSeconds",0);add(HistoryItem(x.optString("contentId").ifBlank{x.optString("filmeId")},x.optString("title").ifBlank{x.optString("titulo")},x.optString("tempo").ifBlank{pos.toString()},x.optString("thumb").ifBlank{x.optString("imagem")},x.optString("updatedAt"),x.optString("categoria"),x.optString("slug"),x.optString("contentType").ifBlank{x.optString("tipo")},positionSeconds=pos,durationSeconds=dur))}}}
+    fun resolveCatalogItem(query:String,filmeId:String=""):Result<CatalogMatch?> = authenticatedJson("GET","/api/buscar/${Uri.encode(query.ifBlank{filmeId})}").map{j->val a=j.optJSONArray("resultados")?:JSONArray();val candidates=(0 until a.length()).mapNotNull{a.optJSONObject(it)};val x=candidates.firstOrNull{it.optString("contentId")==filmeId||it.optString("filmeId")==filmeId||it.optString("link_assistir").contains(filmeId)}?:candidates.firstOrNull()?:return@map null;val link=x.optString("link_assistir").substringBefore("?").trimEnd('/');val parts=link.split("/").filter{it.isNotBlank()};val cat=x.optString("categoria").ifBlank{parts.getOrNull(parts.size-2).orEmpty()};val sl=x.optString("slug").ifBlank{parts.lastOrNull().orEmpty()};CatalogMatch(x.optString("contentId").ifBlank{x.optString("filmeId").ifBlank{sl}},x.optString("titulo"),x.optString("thumb").ifBlank{x.optString("imagem")},cat,sl,x.optString("tipo"))}
+    fun saveProgress(filmeId:String,titulo:String,tempo:String,thumb:String,durationSeconds:Long=0,categoria:String="",slug:String="",tipo:String="",serieCategoria:String="",serieSlug:String=""):Result<JSONObject>{val p=tempo.split(":").mapNotNull{it.toLongOrNull()};val pos=when(p.size){3->p[0]*3600+p[1]*60+p[2];2->p[0]*60+p[1];1->p[0];else->0};return authenticatedJson("PUT",profilePath("/progress"),JSONObject().put("contentId",filmeId).put("title",titulo).put("thumb",thumb).put("contentType",if(tipo.contains("epis",true))"episode" else "movie").put("positionSeconds",pos).put("durationSeconds",durationSeconds).toString())}
+    fun logout():Result<JSONObject>{clear();return Result(true,JSONObject(),statusCode=200)}
 
-    fun token(): String? {
-        if (!::appContext.isInitialized) return null
-        val prefs = appContext.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
-        val stored = prefs.getString(TOKEN_KEY, null) ?: return null
+    fun proxyMovieRequest(request:WebResourceRequest):RawResponse?{val u=request.url;if(u.host!=MOVIE_API_HOST||!u.path.orEmpty().startsWith("/api/"))return null;return try{rawRequest(request.method.ifBlank{"GET"},u.encodedPath.orEmpty()+u.encodedQuery.orEmpty().let{if(it.isBlank())"" else "?$it"},null,true)}catch(e:Throwable){RawResponse(599,JSONObject().put("error",friendlyNetworkError(e)).toString(),"application/json")}}
+    fun proxyExternalImageRequest(request:WebResourceRequest):WebResourceResponse? {
+        val u=request.url
+        val host=u.host.orEmpty().lowercase()
+        val path=u.path.orEmpty().lowercase()
+        val allowed=host=="novelasflix.video" || host.endsWith(".novelasflix.video") || host=="image.tmdb.org" || host=="api.dicebear.com"
+        if(!allowed || request.method.uppercase()!="GET") return null
         return try {
-            decrypt(stored)
-        } catch (_: Throwable) {
-            // Uma falha ao ler o token corrente não deve apagar os perfis
-            // criptografados. Um deles ainda pode restaurar a sessão ativa.
-            prefs.edit()
-                .remove(TOKEN_KEY)
-                .remove("user_id")
-                .remove("user_email")
-                .remove("user_name")
-                .remove("expires_at")
-                .remove("account_status")
-                .remove("days_remaining")
-                .apply()
-            null
-        }
-    }
-
-    /**
-     * Recupera a sessão do perfil ativo quando o token corrente foi perdido,
-     * mas o perfil autenticado continua salvo localmente.
-     */
-    fun restoreActiveProfileIfNeeded(): Boolean {
-        if (!::appContext.isInitialized) return false
-        if (token()?.isNotBlank() == true) return true
-        val stored = readStoredProfiles()
-        if (stored.isEmpty()) return false
-        val prefs = appContext.getSharedPreferences(PROFILES_PREFS, Context.MODE_PRIVATE)
-        val activeId = prefs.getString(ACTIVE_PROFILE_KEY, "").orEmpty().trim()
-        val candidate = stored.firstOrNull { it.id == activeId } ?: stored.first()
-        return try {
-            val accessToken = decrypt(candidate.encryptedToken).trim()
-            if (accessToken.isBlank()) return false
-            saveLogin(accessToken, candidate.user)
-            saveStoredProfiles(stored, candidate.id)
-            true
-        } catch (error: Throwable) {
-            Log.w(TAG, "Não foi possível restaurar o perfil ativo", error)
-            false
-        }
-    }
-
-    fun saveLogin(accessToken: String, user: User?) {
-        require(accessToken.isNotBlank())
-        val prefs = appContext.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
-        prefs.edit()
-            .putString(TOKEN_KEY, encrypt(accessToken))
-            .putString("user_id", user?.id.orEmpty())
-            .putString("user_email", user?.email.orEmpty())
-            .putString("user_name", user?.username.orEmpty())
-            .putString("expires_at", user?.expiresAt.orEmpty())
-            .putString("account_status", user?.accountStatus.orEmpty())
-            .putInt("days_remaining", user?.daysRemaining ?: -1)
-            .putString("created_at", user?.createdAt.orEmpty())
-            .putString("last_used_at", user?.lastUsedAt.orEmpty())
-            .putString("warning_json", user?.warning?.toString().orEmpty())
-            .apply()
-    }
-
-    fun cachedUser(): User? {
-        if (!::appContext.isInitialized || !hasToken()) return null
-        val prefs = appContext.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
-        return User(
-            id = prefs.getString("user_id", "").orEmpty(),
-            email = prefs.getString("user_email", "").orEmpty(),
-            username = prefs.getString("user_name", "").orEmpty(),
-            expiresAt = prefs.getString("expires_at", "").orEmpty(),
-            accountStatus = prefs.getString("account_status", "").orEmpty(),
-            daysRemaining = prefs.getInt("days_remaining", -1).takeIf { it >= 0 },
-            createdAt = prefs.getString("created_at", "").orEmpty(),
-            lastUsedAt = prefs.getString("last_used_at", "").orEmpty(),
-            warning = prefs.getString("warning_json", "").orEmpty().takeIf { it.isNotBlank() }?.let { parseObject(it) },
-        )
-    }
-
-    fun clear() {
-        if (!::appContext.isInitialized) return
-        appContext.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().clear().apply()
-        appContext.getSharedPreferences(PROFILES_PREFS, Context.MODE_PRIVATE).edit().clear().apply()
-    }
-
-    fun profiles(): List<Profile> = readStoredProfiles().map { it.toPublic() }
-
-    fun activeProfileId(): String = if (::appContext.isInitialized) {
-        val storedId = appContext.getSharedPreferences(PROFILES_PREFS, Context.MODE_PRIVATE)
-            .getString(ACTIVE_PROFILE_KEY, "").orEmpty().trim()
-        val profiles = readStoredProfiles()
-        profiles.firstOrNull { it.id == storedId }?.id
-            ?: profiles.firstOrNull()?.id.orEmpty()
-    } else ""
-
-    fun ensureCurrentProfile(defaultName: String, defaultAvatarSeed: String): Profile? {
-        var currentToken = token()?.takeIf { it.isNotBlank() }
-        if (currentToken == null && restoreActiveProfileIfNeeded()) {
-            currentToken = token()?.takeIf { it.isNotBlank() }
-        }
-        currentToken ?: return null
-        val stored = readStoredProfiles()
-        val existing = stored.firstOrNull { profile ->
-            try { decrypt(profile.encryptedToken) == currentToken } catch (_: Throwable) { false }
-        }
-        if (existing != null) {
-            saveStoredProfiles(stored, existing.id)
-            return existing.toPublic()
-        }
-        val user = cachedUser() ?: User()
-        val profile = StoredProfile(
-            id = "profile-${java.util.UUID.randomUUID()}",
-            name = defaultName.trim().ifBlank { user.username.ifBlank { user.email.ifBlank { "Meu perfil" } } },
-            avatarSeed = defaultAvatarSeed,
-            avatarStyle = "fun-emoji",
-            email = user.email,
-            user = user,
-            encryptedToken = encrypt(currentToken),
-        )
-        saveStoredProfiles(stored + profile, profile.id)
-        return profile.toPublic()
-    }
-
-    fun activateProfile(id: String): Result<Profile> {
-        val profile = readStoredProfiles().firstOrNull { it.id == id }
-            ?: return Result(false, message = "Perfil não encontrado.")
-        return try {
-            val accessToken = decrypt(profile.encryptedToken)
-            saveLogin(accessToken, profile.user)
-            appContext.getSharedPreferences(PROFILES_PREFS, Context.MODE_PRIVATE).edit()
-                .putString(ACTIVE_PROFILE_KEY, profile.id).apply()
-            Result(true, profile.toPublic(), statusCode = 200)
-        } catch (error: Throwable) {
-            Result(false, message = "Não foi possível ativar este perfil.")
-        }
-    }
-
-    fun createProfile(code: String, email: String, password: String, name: String, avatarSeed: String): Result<Profile> {
-        ensureCurrentProfile(cachedUser()?.username.orEmpty(), "tedflix-avatar-01")
-        return try {
-            val body = JSONObject()
-                .put("code", code.trim())
-                .put("email", email.trim())
-                .put("password", password)
-            val response = rawRequest("POST", "/auth/login", body.toString(), includeBearer = false)
-            val json = parseObject(response.body)
-            if (response.statusCode !in 200..299) {
-                Result(false, message = serverMessage(json, response.statusCode), statusCode = response.statusCode)
-            } else {
-                val token = json.optString("token").trim()
-                if (token.isBlank()) {
-                    Result(false, message = "O servidor não devolveu uma sessão válida.", statusCode = response.statusCode)
-                } else {
-                    val user = parseUser(json.optJSONObject("user")) ?: User(email = email.trim())
-                    val profile = StoredProfile(
-                        id = "profile-${java.util.UUID.randomUUID()}",
-                        name = name.trim().ifBlank { user.username.ifBlank { email.trim() } },
-                        avatarSeed = avatarSeed.ifBlank { "tedflix-avatar-01" },
-                        avatarStyle = "fun-emoji",
-                        email = user.email.ifBlank { email.trim() },
-                        user = user,
-                        encryptedToken = encrypt(token),
-                    )
-                    // O perfil recém-criado precisa ser persistido como ativo. Manter
-                    // um ACTIVE_PROFILE_KEY antigo deixa a tela de Configurações com
-                    // um perfil visual sem correspondência no armazenamento local.
-                    saveStoredProfiles(readStoredProfiles() + profile, profile.id)
-                    Result(true, profile.toPublic(), statusCode = response.statusCode)
-                }
+            val c=(URL(u.toString()).openConnection() as HttpURLConnection).apply {
+                connectTimeout=12000; readTimeout=20000; instanceFollowRedirects=true; useCaches=true
+                setRequestProperty("User-Agent","Mozilla/5.0 (Linux; Android) Tedflix/1.0")
+                setRequestProperty("Accept","image/avif,image/webp,image/apng,image/*,*/*;q=0.8")
+                if(host.contains("novelasflix")) setRequestProperty("Referer","https://novelasflix.video/")
             }
-        } catch (error: Throwable) {
-            Result(false, message = friendlyNetworkError(error), statusCode = 0)
-        }
-    }
-
-    fun updateProfile(id: String, name: String, avatarSeed: String): Boolean {
-        val updated = readStoredProfiles().map { profile ->
-            if (profile.id == id) profile.copy(
-                name = name.trim().ifBlank { profile.name },
-                avatarSeed = avatarSeed.ifBlank { profile.avatarSeed },
-            ) else profile
-        }
-        if (updated.none { it.id == id }) return false
-        val active = activeProfileId()
-        val nextActive = if (updated.any { it.id == active }) active else id
-        saveStoredProfiles(updated, nextActive)
-        return true
-    }
-
-    fun deleteProfile(id: String): Boolean {
-        val stored = readStoredProfiles()
-        if (stored.size <= 1 || stored.none { it.id == id }) return false
-        val remaining = stored.filterNot { it.id == id }
-        val active = activeProfileId()
-        val nextId = if (active == id) remaining.first().id else active
-        saveStoredProfiles(remaining, nextId)
-        if (active == id) activateProfile(nextId)
-        return true
-    }
-
-    fun login(code: String, email: String, password: String): Result<User> {
-        return try {
-            val body = JSONObject()
-                .put("code", code.trim())
-                .put("email", email.trim())
-                .put("password", password)
-            val response = rawRequest("POST", "/auth/login", body.toString(), includeBearer = false)
-            val json = parseObject(response.body)
-            if (response.statusCode !in 200..299) {
-                Result(false, message = serverMessage(json, response.statusCode), statusCode = response.statusCode)
-            } else {
-                val token = json.optString("token").trim()
-                if (token.isBlank()) {
-                    Result(false, message = "O servidor não devolveu uma sessão válida.", statusCode = response.statusCode)
-                } else {
-                    val user = parseUser(json.optJSONObject("user"))
-                    saveLogin(token, user)
-                    Result(true, user, statusCode = response.statusCode)
-                }
+            val code=c.responseCode
+            if(code !in 200..299){c.disconnect();return null}
+            val bytes=c.inputStream.use{it.readBytes()}
+            val type=c.contentType?.substringBefore(';')?.ifBlank{null} ?: when {
+                path.endsWith(".webp")->"image/webp"
+                path.endsWith(".png")->"image/png"
+                else->"image/jpeg"
             }
-        } catch (error: Throwable) {
-            Result(false, message = friendlyNetworkError(error), statusCode = 0)
-        }
+            c.disconnect()
+            WebResourceResponse(type,null,200,"OK",mapOf("Cache-Control" to "public, max-age=3600"),ByteArrayInputStream(bytes))
+        } catch(_:Throwable){null}
     }
-
-    fun verify(): Result<User> {
-        val accessToken = token().orEmpty().trim()
-        if (accessToken.isBlank()) return Result(false, message = "Nenhum token salvo.", statusCode = 401)
-        return try {
-            val response = rawRequest("GET", "/validar/${Uri.encode(accessToken)}", null, includeBearer = false)
-            val json = parseObject(response.body)
-            val valid = response.statusCode in 200..299 && json.optBoolean("success", response.statusCode in 200..299)
-            if (!valid) {
-                clear()
-                Result(false, message = serverMessage(json, response.statusCode), statusCode = response.statusCode)
-            } else {
-                val user = User(username = json.optString("nome").ifBlank { cachedUser()?.username.orEmpty() })
-                saveLogin(accessToken, user)
-                Result(true, user, statusCode = response.statusCode)
-            }
-        } catch (error: Throwable) {
-            Result(false, message = friendlyNetworkError(error), statusCode = 0)
-        }
-    }
-
-    fun createTokenProfile(tokenValue: String, name: String, avatarSeed: String): Result<Profile> {
-        val cleanToken = tokenValue.trim().uppercase()
-        if (cleanToken.isBlank()) {
-            return Result(false, message = "Digite o código de acesso.")
-        }
-        return try {
-            val response = rawRequest("GET", "/validar/${Uri.encode(cleanToken)}", null, includeBearer = false)
-            val json = parseObject(response.body)
-            val valid = response.statusCode in 200..299 && json.optBoolean("success", response.statusCode in 200..299)
-            if (!valid) {
-                Result(false, message = serverMessage(json, response.statusCode), statusCode = response.statusCode)
-            } else {
-                val user = User(username = json.optString("nome").ifBlank { name.trim() })
-                val profile = StoredProfile(
-                    id = "profile-${java.util.UUID.randomUUID()}",
-                    name = name.trim().ifBlank { user.username.ifBlank { "Meu perfil" } },
-                    avatarSeed = avatarSeed.ifBlank { "tedflix-avatar-01" },
-                    avatarStyle = "fun-emoji",
-                    email = "",
-                    user = user,
-                    encryptedToken = encrypt(cleanToken),
-                )
-                saveStoredProfiles(readStoredProfiles() + profile, profile.id)
-                saveLogin(cleanToken, user)
-                Result(true, profile.toPublic(), statusCode = response.statusCode)
-            }
-        } catch (error: Throwable) {
-            Result(false, message = friendlyNetworkError(error), statusCode = 0)
-        }
-    }
-
-    fun profile(): Result<User> = authenticatedJson("GET", "/users/me").map { json ->
-        val user = parseUser(json)
-        if (user != null) saveLogin(token().orEmpty(), user)
-        user ?: User()
-    }
-
-    fun status(): Result<JSONObject> = authenticatedJson("GET", "/users/me/status")
-
-    fun updateUsername(username: String): Result<JSONObject> {
-        val clean = username.trim()
-        if (clean.isBlank()) return Result(false, message = "Informe um nome para o perfil.")
-        val result = authenticatedJson(
-            "PATCH",
-            "/users/me",
-            JSONObject().put("username", clean).toString(),
-        )
-        if (result.ok) {
-            val current = cachedUser()
-            if (current != null) saveLogin(token().orEmpty(), current.copy(username = clean))
-        }
-        return result
-    }
-
-    fun changePassword(currentPassword: String, newPassword: String): Result<JSONObject> = authenticatedJson(
-        "PATCH",
-        "/auth/password",
-        JSONObject()
-            .put("currentPassword", currentPassword)
-            .put("newPassword", newPassword)
-            .toString(),
-    )
-
-    fun notifications(): Result<List<Notification>> = authenticatedJson("GET", "/users/me/notifications").map { json ->
-        val list = mutableListOf<Notification>()
-        val array = json.optJSONArray("notifications") ?: JSONArray()
-        for (i in 0 until array.length()) {
-            val item = array.optJSONObject(i) ?: continue
-            list += Notification(
-                id = item.optString("id"),
-                type = item.optString("type"),
-                title = item.optString("title"),
-                body = item.optString("body"),
-                read = item.optBoolean("read", false),
-                sentAt = item.optString("sentAt"),
-            )
-        }
-        list
-    }
-
-    fun markNotificationRead(id: String): Result<JSONObject> = authenticatedJson(
-        "PATCH",
-        "/users/me/notifications/${Uri.encode(id)}/read",
-    )
-
-    fun listFavorites(): Result<List<Favorite>> = authenticatedJson("GET", "/api/favorites/list").map { json ->
-        val array = json.optJSONArray("favoritos") ?: json.optJSONArray("favorites") ?: JSONArray()
-        buildList {
-            for (i in 0 until array.length()) {
-                val item = array.optJSONObject(i) ?: continue
-                add(
-                    Favorite(
-                        filmeId = item.optString("filmeId"),
-                        titulo = item.optString("titulo"),
-                        thumb = item.optString("thumb").ifBlank { item.optString("imagem") },
-                        adicionadoEm = item.optString("adicionadoEm"),
-                        categoria = item.optString("categoria"),
-                        slug = item.optString("slug"),
-                        tipo = item.optString("tipo"),
-                    ),
-                )
-            }
-        }
-    }
-
-    fun resolveCatalogItem(query: String, filmeId: String = ""): Result<CatalogMatch?> {
-        if (query.isBlank() && filmeId.isBlank()) return Result(true, null, statusCode = 200)
-        return authenticatedJson("GET", "/api/buscar/${Uri.encode(query.ifBlank { filmeId })}").map { json ->
-            val array = json.optJSONArray("resultados") ?: JSONArray()
-            val normalizedQuery = query.trim().lowercase()
-            var fallback: CatalogMatch? = null
-            for (i in 0 until array.length()) {
-                val item = array.optJSONObject(i) ?: continue
-                val title = item.optString("titulo").trim()
-                val id = item.optString("filmeId").ifBlank { item.optString("id").ifBlank { item.optString("_id") } }
-                val link = item.optString("link_assistir").replace(Regex("^https?://[^/]+"), "")
-                val parts = link.split("/").filter { it.isNotBlank() }
-                val category = item.optString("categoria").ifBlank { parts.getOrNull(parts.size - 2).orEmpty() }
-                val slug = item.optString("slug").ifBlank { parts.lastOrNull().orEmpty() }
-                val match = CatalogMatch(
-                    filmeId = id,
-                    titulo = title,
-                    thumb = item.optString("thumb").ifBlank { item.optString("imagem") },
-                    categoria = category,
-                    slug = slug,
-                    tipo = item.optString("tipo"),
-                )
-                if (fallback == null) fallback = match
-                if ((filmeId.isNotBlank() && id == filmeId) || (normalizedQuery.isNotBlank() && title.lowercase() == normalizedQuery)) return@map match
-            }
-            fallback
-        }
-    }
-
-    fun toggleFavorite(filmeId: String, titulo: String, thumb: String): Result<Boolean?> {
-        return authenticatedJson(
-            "POST",
-            "/api/favorites/toggle",
-            JSONObject().put("filmeId", filmeId).put("titulo", titulo).put("thumb", thumb).toString(),
-        ).map { json ->
-            when {
-                json.has("favorito") -> json.optBoolean("favorito")
-                json.has("favorited") -> json.optBoolean("favorited")
-                json.has("isFavorite") -> json.optBoolean("isFavorite")
-                json.has("isFavorito") -> json.optBoolean("isFavorito")
-                else -> null
-            }
-        }
-    }
-
-    fun continueWatching(): Result<List<HistoryItem>> = authenticatedJson("GET", "/api/history/continue-watching").map { json ->
-        val payload = json.optJSONObject("data") ?: json
-        val array = payload.optJSONArray("continuarAssistindo")
-            ?: payload.optJSONArray("history")
-            ?: payload.optJSONArray("resultados")
-            ?: JSONArray()
-        buildList {
-            for (i in 0 until array.length()) {
-                val item = array.optJSONObject(i) ?: continue
-                add(
-                    HistoryItem(
-                        filmeId = item.optString("filmeId"),
-                        titulo = item.optString("titulo"),
-                        tempo = item.optString("tempo"),
-                        thumb = item.optString("thumb").ifBlank { item.optString("imagem") },
-                        ultimoAcesso = item.optString("ultimoAcesso"),
-                        categoria = item.optString("categoria"),
-                        slug = item.optString("slug"),
-                        tipo = item.optString("tipo"),
-                        serieCategoria = item.optString("serieCategoria"),
-                        serieSlug = item.optString("serieSlug"),
-                    ),
-                )
-            }
-        }
-    }
-
-    private fun StoredProfile.toPublic() = Profile(id, name, avatarSeed, avatarStyle, email)
-
-    private fun readStoredProfiles(): List<StoredProfile> {
-        if (!::appContext.isInitialized) return emptyList()
-        val raw = appContext.getSharedPreferences(PROFILES_PREFS, Context.MODE_PRIVATE)
-            .getString(PROFILES_KEY, "[]").orEmpty()
-        return try {
-            val array = JSONArray(raw)
-            buildList {
-                for (i in 0 until array.length()) {
-                    val item = array.optJSONObject(i) ?: continue
-                    val encrypted = item.optString("encryptedToken").trim()
-                    val id = item.optString("id").trim()
-                    if (id.isBlank() || encrypted.isBlank()) continue
-                    add(StoredProfile(
-                        id = id,
-                        name = item.optString("name").ifBlank { "Meu perfil" },
-                        avatarSeed = item.optString("avatarSeed").ifBlank { "tedflix-avatar-01" },
-                        avatarStyle = item.optString("avatarStyle").ifBlank { "fun-emoji" },
-                        email = item.optString("email"),
-                        user = User(
-                            id = item.optString("userId"),
-                            email = item.optString("userEmail").ifBlank { item.optString("email") },
-                            username = item.optString("username"),
-                            expiresAt = item.optString("expiresAt"),
-                            accountStatus = item.optString("accountStatus"),
-                            daysRemaining = item.optInt("daysRemaining", -1).takeIf { it >= 0 },
-                            createdAt = item.optString("createdAt"),
-                            lastUsedAt = item.optString("lastUsedAt"),
-                            warning = item.optJSONObject("warning"),
-                        ),
-                        encryptedToken = encrypted,
-                    ))
-                }
-            }
-        } catch (_: Throwable) { emptyList() }
-    }
-
-    private fun saveStoredProfiles(profiles: List<StoredProfile>, activeId: String) {
-        if (!::appContext.isInitialized) return
-        val array = JSONArray().apply {
-            profiles.forEach { profile -> put(JSONObject().apply {
-                put("id", profile.id)
-                put("name", profile.name)
-                put("avatarSeed", profile.avatarSeed)
-                put("avatarStyle", profile.avatarStyle)
-                put("email", profile.email)
-                put("userId", profile.user.id)
-                put("userEmail", profile.user.email)
-                put("username", profile.user.username)
-                put("expiresAt", profile.user.expiresAt)
-                put("accountStatus", profile.user.accountStatus)
-                put("daysRemaining", profile.user.daysRemaining ?: -1)
-                put("createdAt", profile.user.createdAt)
-                put("lastUsedAt", profile.user.lastUsedAt)
-                profile.user.warning?.let { put("warning", it) }
-                put("encryptedToken", profile.encryptedToken)
-            }) }
-        }
-        appContext.getSharedPreferences(PROFILES_PREFS, Context.MODE_PRIVATE).edit()
-            .putString(PROFILES_KEY, array.toString())
-            .putString(ACTIVE_PROFILE_KEY, activeId)
-            .apply()
-    }
-
-    fun saveProgress(
-        filmeId: String,
-        titulo: String,
-        tempo: String,
-        thumb: String,
-        categoria: String = "",
-        slug: String = "",
-        tipo: String = "",
-        serieCategoria: String = "",
-        serieSlug: String = "",
-    ): Result<JSONObject> = authenticatedJson(
-        "POST",
-        "/api/history/save-progress",
-        JSONObject().apply {
-            put("filmeId", filmeId)
-            put("titulo", titulo)
-            put("tempo", tempo)
-            put("thumb", thumb)
-            if (categoria.isNotBlank()) put("categoria", categoria)
-            if (slug.isNotBlank()) put("slug", slug)
-            if (tipo.isNotBlank()) put("tipo", tipo)
-            if (serieCategoria.isNotBlank()) put("serieCategoria", serieCategoria)
-            if (serieSlug.isNotBlank()) put("serieSlug", serieSlug)
-        }.toString(),
-    )
-
-    fun logout(): Result<JSONObject> {
-        clear()
-        return Result(true, JSONObject().put("success", true), statusCode = 200)
-    }
-
-    /** Proxy para fetch GET da WebView. O bearer fica fora do JavaScript. */
-    fun proxyMovieRequest(request: WebResourceRequest): RawResponse? {
-        val uri = request.url
-        if (uri.host != MOVIE_API_HOST || !uri.path.orEmpty().startsWith("/api/")) return null
-        if (!hasToken()) return null
-        val path = uri.encodedPath.orEmpty() + uri.encodedQuery.orEmpty().let { if (it.isBlank()) "" else "?$it" }
-        val protectedPath = path.substringBefore('?') in setOf("/api/favorites/list", "/api/favorites/toggle", "/api/history/save-progress", "/api/history/continue-watching")
-        return try {
-            rawRequest(request.method.ifBlank { "GET" }, path, null, includeBearer = protectedPath)
-        } catch (error: Throwable) {
-            RawResponse(599, JSONObject().put("error", friendlyNetworkError(error)).toString(), "application/json")
-        }
-    }
-
-    fun toWebResourceResponse(raw: RawResponse): WebResourceResponse {
-        val mime = raw.contentType.substringBefore(';').ifBlank { "application/json" }
-        val charset = if (raw.contentType.contains("charset=", ignoreCase = true)) "UTF-8" else "UTF-8"
-        val reason = when (raw.statusCode) {
-            in 200..299 -> "OK"
-            401 -> "Unauthorized"
-            403 -> "Forbidden"
-            404 -> "Not Found"
-            429 -> "Too Many Requests"
-            else -> "Error"
-        }
-        return WebResourceResponse(
-            mime,
-            charset,
-            raw.statusCode.coerceIn(100, 599),
-            reason,
-            mapOf("Cache-Control" to "no-store", "Pragma" to "no-cache"),
-            ByteArrayInputStream(raw.body.toByteArray(StandardCharsets.UTF_8)),
-        )
-    }
-
-    private fun <T> Result<JSONObject>.map(transform: (JSONObject) -> T): Result<T> {
-        return if (ok) Result(true, transform(value ?: JSONObject()), statusCode = statusCode)
-        else Result(false, message = message, statusCode = statusCode)
-    }
-
-    private fun authenticatedJson(method: String, path: String, body: String? = null): Result<JSONObject> {
-        return try {
-            val response = rawRequest(method, path, body, includeBearer = true)
-            val json = parseObject(response.body)
-            // O servidor de filmes e o servidor de autenticação são serviços separados.
-            // Um 401 em /api/* pode indicar apenas que os secrets de validação dos
-            // servidores ainda não estão sincronizados; não devemos apagar uma sessão
-            // que continua válida em /auth/verify. A sessão só é removida quando a
-            // própria API de autenticação rejeita o token.
-            if ((response.statusCode == 401 || response.statusCode == 403) && !path.startsWith("/api/")) {
-                clear()
-            }
-            if (response.statusCode in 200..299) {
-                Result(true, json, statusCode = response.statusCode)
-            } else {
-                Result(false, message = serverMessage(json, response.statusCode), statusCode = response.statusCode)
-            }
-        } catch (error: Throwable) {
-            Result(false, message = friendlyNetworkError(error), statusCode = 0)
-        }
-    }
-
-    fun rawRequest(method: String, path: String, body: String? = null, includeBearer: Boolean): RawResponse {
-        val url = when {
-            path.startsWith("http") -> path
-            path.startsWith("/api/") -> "https://$MOVIE_API_HOST$path"
-            else -> "$AUTH_BASE$path"
-        }
-        val connection = (URL(url).openConnection() as HttpURLConnection).apply {
-            requestMethod = method.uppercase()
-            connectTimeout = 15_000
-            readTimeout = 20_000
-            instanceFollowRedirects = true
-            useCaches = false
-            doInput = true
-            setRequestProperty("Accept", "application/json")
-            setRequestProperty("Cache-Control", "no-store")
-            if (body != null) {
-                doOutput = true
-                setRequestProperty("Content-Type", "application/json; charset=utf-8")
-            }
-            if (includeBearer) {
-                token()?.takeIf { it.isNotBlank() }?.let { setRequestProperty("x-access-token", it) }
-            }
-        }
-        return try {
-            if (body != null) {
-                connection.outputStream.use { it.write(body.toByteArray(StandardCharsets.UTF_8)) }
-            }
-            val status = connection.responseCode
-            val stream = if (status in 200..399) connection.inputStream else connection.errorStream
-            val responseBody = stream?.bufferedReader(StandardCharsets.UTF_8)?.use { it.readText() }.orEmpty()
-            RawResponse(status, responseBody, connection.contentType ?: "application/json")
-        } finally {
-            connection.disconnect()
-        }
-    }
-
-    private fun parseObject(raw: String): JSONObject = try {
-        if (raw.trim().startsWith("{")) JSONObject(raw) else JSONObject()
-    } catch (_: Throwable) {
-        JSONObject()
-    }
-
-    private fun parseUser(json: JSONObject?): User? {
-        if (json == null) return null
-        return User(
-            id = json.optString("id"),
-            email = json.optString("email"),
-            username = json.optString("username"),
-            expiresAt = json.optString("accountExpiresAt", json.optString("expiresAt")),
-            accountStatus = json.optString("accountStatus", json.optString("status")),
-            daysRemaining = if (json.has("daysRemaining")) json.optInt("daysRemaining") else null,
-            createdAt = json.optString("createdAt"),
-            lastUsedAt = json.optString("lastUsedAt"),
-            warning = json.optJSONObject("warning"),
-        )
-    }
-
-    private fun serverMessage(json: JSONObject, code: Int): String {
-        val fromServer = json.optString("error").ifBlank { json.optString("message") }
-        if (fromServer.isNotBlank()) return fromServer
-        return when (code) {
-            400 -> "Confira os dados informados."
-            401 -> "Sessão inválida ou credenciais incorretas."
-            403 -> "Sua conta não pode acessar o serviço."
-            429 -> "Muitas tentativas. Aguarde alguns minutos."
-            in 500..599 -> "Servidor indisponível no momento."
-            else -> "Não foi possível concluir a operação."
-        }
-    }
-
-    private fun friendlyNetworkError(error: Throwable): String {
-        val message = error.message.orEmpty()
-        return if (message.contains("timeout", true) || message.contains("timed out", true)) {
-            "O servidor demorou para responder. Tente novamente."
-        } else {
-            "Não foi possível conectar ao servidor. Verifique sua internet."
-        }
-    }
-
-    private fun secretKey(): SecretKey {
-        val keyStore = KeyStore.getInstance("AndroidKeyStore").apply { load(null) }
-        val existing = keyStore.getKey(KEY_ALIAS, null) as? SecretKey
-        if (existing != null) return existing
-        val generator = KeyGenerator.getInstance(KeyProperties.KEY_ALGORITHM_AES, "AndroidKeyStore")
-        generator.init(
-            KeyGenParameterSpec.Builder(
-                KEY_ALIAS,
-                KeyProperties.PURPOSE_ENCRYPT or KeyProperties.PURPOSE_DECRYPT,
-            )
-                .setBlockModes(KeyProperties.BLOCK_MODE_GCM)
-                .setEncryptionPaddings(KeyProperties.ENCRYPTION_PADDING_NONE)
-                .setRandomizedEncryptionRequired(true)
-                .build(),
-        )
-        return generator.generateKey()
-    }
-
-    private fun encrypt(value: String): String {
-        val cipher = Cipher.getInstance("AES/GCM/NoPadding")
-        cipher.init(Cipher.ENCRYPT_MODE, secretKey())
-        val encrypted = cipher.doFinal(value.toByteArray(StandardCharsets.UTF_8))
-        return Base64.encodeToString(cipher.iv, Base64.NO_WRAP) + ":" +
-            Base64.encodeToString(encrypted, Base64.NO_WRAP)
-    }
-
-    private fun decrypt(value: String): String {
-        val parts = value.split(":", limit = 2)
-        require(parts.size == 2)
-        val iv = Base64.decode(parts[0], Base64.NO_WRAP)
-        val payload = Base64.decode(parts[1], Base64.NO_WRAP)
-        val cipher = Cipher.getInstance("AES/GCM/NoPadding")
-        cipher.init(Cipher.DECRYPT_MODE, secretKey(), GCMParameterSpec(128, iv))
-        return String(cipher.doFinal(payload), StandardCharsets.UTF_8)
-    }
+    fun toWebResourceResponse(r:RawResponse)=WebResourceResponse(r.contentType.substringBefore(';').ifBlank{"application/json"},"UTF-8",r.statusCode.coerceIn(100,599),"OK",mapOf("Cache-Control" to "no-store","Pragma" to "no-cache"),ByteArrayInputStream(r.body.toByteArray(StandardCharsets.UTF_8)))
+    private fun <T>Result<JSONObject>.map(f:(JSONObject)->T):Result<T> = if(ok)Result(true,f(value?:JSONObject()),statusCode=statusCode) else Result(false,message=message,statusCode=statusCode)
+    private fun authenticatedJson(method:String,path:String,body:String?=null):Result<JSONObject>{return try{val r=rawRequest(method,path,body,true);val j=parseObject(r.body);if(r.statusCode in 200..299)Result(true,j,statusCode=r.statusCode)else{if(r.statusCode==401||r.statusCode==403)clear();Result(false,message=serverMessage(j,r.statusCode),statusCode=r.statusCode)}}catch(e:Throwable){Result(false,message=friendlyNetworkError(e))}}
+    fun rawRequest(method:String,path:String,body:String?=null,includeBearer:Boolean):RawResponse{val url=if(path.startsWith("http"))path else if(path.startsWith("/api/")){if(path.startsWith("/api/filmes")||path.startsWith("/api/series")||path.startsWith("/api/animacoes")||path.startsWith("/api/genero")||path.startsWith("/api/buscar")||path.startsWith("/api/home"))"https://$MOVIE_API_HOST$path" else "$AUTH_BASE$path"}else "$AUTH_BASE$path";val c=(URL(url).openConnection() as HttpURLConnection).apply{requestMethod=method.uppercase();connectTimeout=15000;readTimeout=30000;instanceFollowRedirects=true;useCaches=false;setRequestProperty("Accept","application/json");setRequestProperty("Cache-Control","no-store");if(body!=null){doOutput=true;setRequestProperty("Content-Type","application/json; charset=utf-8")};if(includeBearer)token()?.let{setRequestProperty("Authorization","Bearer $it")}};return try{if(body!=null)c.outputStream.use{it.write(body.toByteArray(StandardCharsets.UTF_8))};val s=c.responseCode;val stream=if(s in 200..399)c.inputStream else c.errorStream;RawResponse(s,stream?.bufferedReader(StandardCharsets.UTF_8)?.use{it.readText()}.orEmpty(),c.contentType?:"application/json")}finally{c.disconnect()}}
+    private fun parseObject(s:String)=try{if(s.trim().startsWith("{"))JSONObject(s)else JSONObject()}catch(_:Throwable){JSONObject()}
+    private fun parseUser(j:JSONObject?):User?{if(j==null)return null;return User(j.optString("uid").ifBlank{j.optString("id")},j.optString("email"),j.optString("username").ifBlank{j.optString("name")},j.optString("expiresAt").ifBlank{j.optString("subscriptionExpiresAt")},j.optString("status").ifBlank{j.optString("accountStatus")},j.optInt("daysRemaining",-1).takeIf{it>=0},j.optString("createdAt"),j.optString("lastLoginAt"),name=j.optString("name"),role=j.optString("role"),emailVerified=if(j.has("emailVerified"))j.optBoolean("emailVerified")else null)}
+    private fun serverMessage(j:JSONObject,c:Int)=j.optString("error").ifBlank{j.optString("message")}.ifBlank{when(c){400->"Confira os dados informados.";401->"Sessão inválida ou credenciais incorretas.";403->"Acesso negado para esta conta.";404->"Recurso não encontrado.";409->"E-mail ou username já utilizado.";429->"Muitas tentativas. Aguarde alguns minutos.";in 500..599->"Servidor indisponível no momento.";else->"Não foi possível concluir a operação."}}
+    private fun friendlyNetworkError(e:Throwable)="Não foi possível conectar ao servidor. Verifique sua internet."
+    private fun readStoredProfiles():List<StoredProfile>{if(!::appContext.isInitialized)return emptyList();return try{val a=JSONArray(appContext.getSharedPreferences(PROFILES_PREFS,0).getString(PROFILES_KEY,"[]"));buildList{for(i in 0 until a.length()){val x=a.optJSONObject(i)?:continue;val enc=x.optString("encryptedToken");if(enc.isBlank())continue;add(StoredProfile(x.optString("id"),x.optString("name").ifBlank{"Meu perfil"},x.optString("avatarSeed").ifBlank{"tedflix-avatar-01"},x.optString("avatarStyle").ifBlank{"fun-emoji"},x.optString("email"),x.optString("username"),x.optBoolean("isKids"),x.optBoolean("isPrimary"),User(email=x.optString("email"),username=x.optString("username")),enc))}}}catch(_:Throwable){emptyList()}}
+    private fun saveStoredProfiles(ps:List<StoredProfile>,active:String){val a=JSONArray();ps.forEach{p->a.put(JSONObject().put("id",p.id).put("name",p.name).put("avatarSeed",p.avatarSeed).put("avatarStyle",p.avatarStyle).put("email",p.email).put("username",p.username).put("isKids",p.isKids).put("isPrimary",p.isPrimary).put("encryptedToken",p.encryptedToken))};appContext.getSharedPreferences(PROFILES_PREFS,0).edit().putString(PROFILES_KEY,a.toString()).putString(ACTIVE_PROFILE_KEY,active).apply()}
+    private fun StoredProfile.public()=Profile(id,name,avatarSeed,avatarStyle,email,username,isKids,isPrimary)
+    private fun key():SecretKey{val ks=KeyStore.getInstance("AndroidKeyStore").apply{load(null)};val old=ks.getKey(KEY_ALIAS,null) as? SecretKey;if(old!=null)return old;val g=KeyGenerator.getInstance(KeyProperties.KEY_ALGORITHM_AES,"AndroidKeyStore");g.init(KeyGenParameterSpec.Builder(KEY_ALIAS,KeyProperties.PURPOSE_ENCRYPT or KeyProperties.PURPOSE_DECRYPT).setBlockModes(KeyProperties.BLOCK_MODE_GCM).setEncryptionPaddings(KeyProperties.ENCRYPTION_PADDING_NONE).build());return g.generateKey()}
+    private fun encrypt(v:String):String{val c=Cipher.getInstance("AES/GCM/NoPadding");c.init(Cipher.ENCRYPT_MODE,key());return Base64.encodeToString(c.iv,Base64.NO_WRAP)+":"+Base64.encodeToString(c.doFinal(v.toByteArray()),Base64.NO_WRAP)}
+    private fun decrypt(v:String):String{val p=v.split(":",limit=2);val c=Cipher.getInstance("AES/GCM/NoPadding");c.init(Cipher.DECRYPT_MODE,key(),GCMParameterSpec(128,Base64.decode(p[0],Base64.NO_WRAP)));return String(c.doFinal(Base64.decode(p[1],Base64.NO_WRAP)))}
 }

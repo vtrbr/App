@@ -643,7 +643,7 @@ class PlayerActivity : Activity() {
                 return
             }
 
-            val streamUrl = "$API_BASE/filme-player/${Uri.encode(categoria)}/${Uri.encode(slug)}"
+            val streamUrl = "$API_BASE/filmes/filme-player/${Uri.encode(categoria)}/${Uri.encode(slug)}"
             diagnosticUrl = streamUrl
             markStep("streamUrl montada")
             val buffer = getSharedPreferences(PREFS, MODE_PRIVATE).getString(BUFFER_KEY, "equilibrado")
@@ -1030,6 +1030,7 @@ class PlayerActivity : Activity() {
                 titulo = titulo,
                 tempo = tempo,
                 thumb = thumb,
+                durationSeconds = (player?.duration?.coerceAtLeast(0L) ?: 0L) / 1_000L,
                 categoria = categoria,
                 slug = slug,
                 tipo = tipo,

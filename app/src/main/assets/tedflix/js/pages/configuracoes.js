@@ -247,7 +247,6 @@ export default async function paginaConfiguracoes(raiz) {
     const contaSection = el("section", { class: "cfg-card cfg-card-group" });
     contaSection.append(el("div", { class: "cfg-group-label" }, "Minha conta"));
     contaSection.append(linhaOpcao("user", "Perfil", "Editar nome, avatar e gerenciar perfis.", () => renderProfiles()));
-    contaSection.append(linhaOpcao("lock", "Senha", "Alterar senha de acesso.", () => renderSecurity()));
     page.append(contaSection);
 
     const favoritosSection = el("section", { class: "cfg-card cfg-card-group" });
@@ -290,8 +289,6 @@ export default async function paginaConfiguracoes(raiz) {
     page.append(developerCard);
 
     const system = el("section", { class: "cfg-card cfg-card-group" });
-    system.append(linhaOpcao("bell", "Notificações", "Gerencie avisos e atualizações da sua conta.", () => window.AndroidPlayer?.openNotifications?.()));
-    system.append(linhaOpcao("gear", "Fontes de conteúdo", "Escolha o servidor principal ou uma fonte alternativa.", () => window.AndroidPlayer?.openSources?.()));
     system.append(linhaOpcao("logout", "Sair da conta", "Encerrar sessão neste dispositivo.", () => sair()));
     page.append(system);
 
@@ -518,17 +515,16 @@ export default async function paginaConfiguracoes(raiz) {
     const editor = el("section", { class: "cfg-profile-editor cfg-add-editor" });
     const preview = el("div", { class: "cfg-editor-preview" }, [imgAvatar({ avatarSeed: state.draftAvatar, name: "Novo perfil" }, "cfg-editor-avatar", 320), el("span", { class: "cfg-editor-camera" }, [icon("camera")])]);
     const nameInput = el("input", { class: "input cfg-field", type: "text", placeholder: "Nome do perfil", maxlength: "40", value: draft.name || "" });
-    const codeInput = el("input", { class: "input cfg-field", type: "text", placeholder: "Digite o código recebido", value: draft.code || "" });
-    const draftAtual = () => ({ name: nameInput.value, code: codeInput.value, avatar: state.draftAvatar });
+    const draftAtual = () => ({ name: nameInput.value, avatar: state.draftAvatar });
     const abrirAvatar = () => renderAvatarPicker(state.draftAvatar, (seed) => renderAddProfile({ ...draftAtual(), avatar: seed }), () => renderAddProfile(draftAtual()));
     const avatarButton = button("Escolher avatar", "cfg-wide-button", abrirAvatar);
     preview.addEventListener("click", abrirAvatar);
-    editor.append(preview, el("label", { class: "cfg-field-label" }, "Nome do perfil"), nameInput, el("label", { class: "cfg-field-label" }, "Token de acesso"), codeInput, avatarButton, button("Validar e adicionar", "cfg-save-button", () => {
-      if (!nameInput.value.trim() || !codeInput.value.trim()) {
-        toast("Preencha o nome e o token de acesso.", "error");
+    editor.append(preview, el("label", { class: "cfg-field-label" }, "Nome do perfil"), nameInput, avatarButton, button("Criar perfil", "cfg-save-button", () => {
+      if (!nameInput.value.trim()) {
+        toast("Preencha o nome do perfil.", "error");
         return;
       }
-      const resposta = respostaAndroid("createProfileFromSettings", codeInput.value.trim(), "", "", nameInput.value.trim(), state.draftAvatar);
+      const resposta = respostaAndroid("createProfileFromSettings", "", "", "", nameInput.value.trim(), state.draftAvatar);
       if (!resposta.success) {
         toast(resposta.error || "Não foi possível adicionar o perfil.", "error");
         return;
@@ -558,25 +554,6 @@ export default async function paginaConfiguracoes(raiz) {
     ]);
     overlay.append(modal);
     page.append(overlay);
-  }
-
-  function renderSecurity() {
-    page.innerHTML = "";
-    page.append(cabecalho("Senha", renderHome));
-    page.append(el("p", { class: "cfg-lead" }, "Altere sua senha de acesso com segurança."));
-    const current = el("input", { class: "input cfg-field", type: "password", placeholder: "Senha atual", autocomplete: "current-password" });
-    const next = el("input", { class: "input cfg-field", type: "password", placeholder: "Nova senha", autocomplete: "new-password" });
-    const feedback = el("p", { class: "cfg-feedback" }, "");
-    page.append(el("section", { class: "cfg-card cfg-form-card" }, [
-      el("div", { class: "cfg-form-heading" }, [icon("lock", "cfg-colored purple"), el("div", {}, [el("h2", {}, "Segurança"), el("p", { class: "cfg-section-sub" }, "Use pelo menos 6 caracteres na nova senha.")])]),
-      current, next, button("Alterar senha", "cfg-save-button", () => {
-        const resposta = respostaAndroid("changeProfilePassword", current.value, next.value);
-        feedback.textContent = resposta.success ? "Senha alterada com sucesso." : (resposta.error || "Não foi possível alterar a senha.");
-        feedback.className = `cfg-feedback${resposta.success ? " success" : " error"}`;
-        if (resposta.success) { current.value = ""; next.value = ""; }
-      }),
-      feedback,
-    ]));
   }
 
   function renderPlayback() {

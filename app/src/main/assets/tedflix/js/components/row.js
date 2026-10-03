@@ -19,9 +19,10 @@ export function fileira({ titulo, verTudo, carregar, limite = 20 }) {
     rail,
   ]);
 
-  aoAparecer(
-    secao,
-    async () => {
+  let carregada = false;
+  const carregarRail = async () => {
+      if (carregada) return;
+      carregada = true;
       try {
         const itens = (await carregar()) || [];
         limpar(rail);
@@ -31,7 +32,7 @@ export function fileira({ titulo, verTudo, carregar, limite = 20 }) {
         }
         const lista = itens.slice(0, limite);
         const primeiros = document.createDocumentFragment();
-        lista.slice(0, 6).forEach((item, i) => primeiros.append(cardTitulo(item, { eager: i < 3 })));
+        lista.slice(0, 6).forEach((item) => primeiros.append(cardTitulo(item, { eager: true })));
         rail.append(primeiros);
 
         const agenda = window.requestIdleCallback || ((f) => setTimeout(f, 60));
@@ -45,9 +46,11 @@ export function fileira({ titulo, verTudo, carregar, limite = 20 }) {
         limpar(rail);
         rail.append(el("p", { class: "sub" }, "Não foi possível carregar esta fileira."));
       }
-    },
-    "700px",
-  );
+  };
+  aoAparecer(secao, carregarRail, "1800px");
+  // Alguns WebViews não notificam IntersectionObserver em elementos dentro
+  // de content-visibility:auto. Não deixe a Home presa em skeletons.
+  setTimeout(carregarRail, 1200);
 
   return secao;
 }

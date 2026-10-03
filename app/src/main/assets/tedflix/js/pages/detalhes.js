@@ -10,7 +10,7 @@ export default async function paginaDetalhe(raiz, { tipo, categoria, slug }) {
 
   let dados;
   try {
-    dados = await getTitulo(categoria, slug);
+    dados = await getTitulo(categoria, slug, tipo);
   } catch (e) {
     limpar(page);
     page.append(el("p", { class: "center" }, "Não foi possível carregar este título."));
@@ -49,7 +49,8 @@ export default async function paginaDetalhe(raiz, { tipo, categoria, slug }) {
   const favoritoBtn = el("button", { class: `btn ghost favorito-btn${favorito ? " ativo" : ""}`, type: "button" }, favorito ? "♥ Favorito" : "♡ Favoritar");
   favoritoBtn.addEventListener("click", () => {
     try {
-      const resposta = JSON.parse(window.AndroidPlayer?.toggleFavorite?.(filmeId, dados.titulo || "Tedflix", thumb) || "{}");
+      const contentType = tipo === "serie" ? "series" : (tipo === "episodio" ? "episode" : "movie");
+      const resposta = JSON.parse(window.AndroidPlayer?.toggleFavorite?.(filmeId, dados.titulo || "Tedflix", thumb, contentType) || "{}");
       if (!resposta.success) throw new Error(resposta.error || "Não foi possível atualizar o favorito.");
       favorito = typeof resposta.favorito === "boolean" ? resposta.favorito : !favorito;
       favoritoBtn.textContent = favorito ? "♥ Favorito" : "♡ Favoritar";

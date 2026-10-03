@@ -1,5 +1,5 @@
 import { el, anoCurto } from "../dom.js";
-import { poster, posterSrcSet } from "../img.js";
+import { poster } from "../img.js";
 import { rotaDetalhe } from "../api.js";
 
 const ESTRELA =
@@ -15,15 +15,14 @@ export function cardTitulo(item, { size = "sm", eager = false } = {}) {
 
   const thumb = el("div", { class: "thumb" });
   if (src) {
-    const srcset = posterSrcSet(item.imagem, size);
     const img = el("img", {
       src,
-      ...(srcset ? { srcset, sizes: "(max-width: 640px) 33vw, 180px" } : {}),
       alt: item.titulo || "",
       width: "342",
       height: "513",
       loading: eager ? "eager" : "lazy",
       decoding: "async",
+      referrerpolicy: "no-referrer",
       fetchpriority: eager ? "high" : "low",
     });
     const pronto = () => img.classList.add("on");

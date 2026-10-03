@@ -1,5 +1,4 @@
-export const API_BASE = "https://tedtv.onrender.com/api";
-export const LIVE_API_BASE = "https://api.reidoscanais.st";
+export const API_BASE = "https://servidores-ted-auth-1.onrender.com/api";
 
 export const CATEGORIAS = [
   { slug: "acao", label: "Ação" },
@@ -20,5 +19,4 @@ export const NAV = [
   { href: "#/filmes", label: "Filmes", icon: "film" },
   { href: "#/categorias", label: "Categorias", icon: "grid" },
   { href: "#/agenda", label: "Agenda", icon: "calendar" },
-  { href: "#/canais", label: "Canais", icon: "broadcast" },
 ];
